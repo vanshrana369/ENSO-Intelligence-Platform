@@ -248,7 +248,7 @@ curl -X POST http://localhost:8000/run-now
 ## 🗺️ Development Roadmap
 
 - [x] Project setup + GitHub repo
-- [ ] Week 1: NOAA + NewsAPI + yfinance data pipeline
+- [x] Week 1: NOAA + NewsAPI + yfinance data pipeline
 - [ ] Week 2: LangGraph multi-agent system (4 agents)
 - [ ] Week 3: Agent 4 (Report Generator) + PDF output
 - [ ] Week 4: Celery automation + FastAPI + GitHub Actions
