@@ -147,6 +147,12 @@ function App() {
       ? '#ef4444'
       : '#6b7280';
 
+  const phasePillStyle = phase.toLowerCase().includes('nina')
+    ? { background: 'linear-gradient(135deg, #0369a1 0%, #0284c7 50%, #0ea5e9 100%)' }
+    : phase.toLowerCase().includes('nino') || phase.toLowerCase().includes('niño')
+      ? { background: 'linear-gradient(135deg, #7f1d1d 0%, #dc2626 50%, #ef4444 100%)' }
+      : { background: 'linear-gradient(135deg, #374151 0%, #4b5563 50%, #6b7280 100%)' };
+
   const riskScore = status?.risk_score ?? 0;
   const riskWidth = (riskScore / 10) * 100;
   const riskFill  = riskScore >= 7 ? '#ef4444' : riskScore >= 4 ? '#f59e0b' : '#10b981';
@@ -200,7 +206,7 @@ function App() {
               <span className="live-dot"></span>
               LIVE
             </div>
-            <div className="phase-pill" style={{ background: phaseColor }}>
+            <div className="phase-pill" style={phasePillStyle}>
               {phase}
             </div>
           </div>
