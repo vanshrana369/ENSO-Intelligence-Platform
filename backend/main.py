@@ -3,10 +3,12 @@ import sys
 import json
 import glob
 import logging
+import pandas as pd
 from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,6 +18,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'agents'))
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:9213546700@localhost:5432/enso_db")
+
 app = FastAPI(
     title="ENSO Intelligence Platform",
     description="AI-powered climate risk intelligence API",
@@ -24,10 +28,81 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+def startup():
+    try:
+        logger.info("Running startup - initializing database...")
+        engine = create_engine(DB_URL)
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS enso_data (
+                    id SERIAL PRIMARY KEY,
+                    date DATE UNIQUE,
+                    mei_value FLOAT
+                )
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS news_data (
+                    id SERIAL PRIMARY KEY,
+                    date DATE,
+                    title TEXT,
+                    source TEXT,
+                    url TEXT
+                )
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS commodity_prices (
+                    id SERIAL PRIMARY KEY,
+                    date DATE,
+                    commodity TEXT,
+                    ticker TEXT,
+                    price FLOAT
+                )
+            """))
+            conn.commit()
+        logger.info("Tables created!")
+
+        # Load MEI data
+        if os.path.exists("data/raw/mei_index.csv"):
+            df = pd.read_csv("data/raw/mei_index.csv")
+            df.to_sql("enso_data", engine, if_exists="replace", index=False)
+            logger.info(f"Stored {len(df)} ENSO records")
+
+        # Load commodity data
+        files = glob.glob("data/raw/commodity_prices_*.csv")
+        if files:
+            df = pd.read_csv(max(files))
+            df.to_sql("commodity_prices", engine, if_exists="replace", index=False)
+            logger.info(f"Stored {len(df)} commodity records")
+
+        # Load news data
+        import json as json_module
+        news_files = glob.glob("data/raw/news/*.json")
+        if news_files:
+            rows = []
+            for f in news_files:
+                with open(f) as nf:
+                    articles = json_module.load(nf)
+                for article in articles:
+                    rows.append({
+                        "date": article.get("publishedAt", "")[:10],
+                        "title": article.get("title", ""),
+                        "source": article.get("source", {}).get("name", ""),
+                        "url": article.get("url", "")
+                    })
+            df = pd.DataFrame(rows)
+            df.to_sql("news_data", engine, if_exists="replace", index=False)
+            logger.info(f"Stored {len(df)} news records")
+
+        logger.info("Startup complete!")
+    except Exception as e:
+        logger.error(f"Startup failed: {e}")
+
+startup()
 
 @app.get("/")
 def root():
