@@ -147,7 +147,7 @@ function App() {
       ? '#ef4444'
       : '#6b7280';
 
-  const riskScore = status?.risk_score ?? 0;
+  const riskScore = (status?.risk_score ?? 0) / 10;
   const riskWidth = (riskScore / 10) * 100;
   const riskFill  = riskScore >= 7 ? '#ef4444' : riskScore >= 4 ? '#f59e0b' : '#10b981';
   const riskColor = (r) =>
