@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import './App.css';
 
 // ── Single source of truth for the backend URL ────────────────────────────────
@@ -28,6 +28,7 @@ function App() {
   const [running, setRunning] = useState(false);
   const [noData, setNoData]   = useState(false);
   const [chartData, setChartData] = useState(mockChartData);
+  const [forecast, setForecast] = useState(null);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -38,8 +39,9 @@ function App() {
       axios.get(API_BASE + '/status'),
       axios.get(API_BASE + '/latest-report'),
       axios.get(API_BASE + '/mei-history').catch(() => null),
+      axios.get(API_BASE + '/forecast').catch(() => null),
     ])
-      .then(([s, r, h]) => {
+      .then(([s, r, h, f]) => {
         // /status returns 503 + {status:"no_data"} when pipeline hasn't run yet
         if (s.data?.status === 'no_data') {
           setNoData(true);
@@ -51,6 +53,10 @@ function App() {
             setChartData(h.data);
           } else {
             setChartData(mockChartData);
+          }
+          // Set forecast if available
+          if (f?.data && f.data.forecast) {
+            setForecast(f.data);
           }
         }
         setLoading(false);
@@ -250,14 +256,34 @@ function App() {
         </div>
       </div>
 
+      {forecast && forecast.predicted_phase && (
+        <div className="stat-card" style={{ gridColumn: 'span 1', marginBottom: '20px' }}>
+          <span className="stat-label">6-Month Forecast</span>
+          <span className="stat-value" style={{
+            color: forecast.predicted_phase.toLowerCase().includes('nina') ? '#3b82f6'
+              : forecast.predicted_phase.toLowerCase().includes('nino') ? '#ef4444'
+              : '#6b7280'
+          }}>
+            {forecast.predicted_phase}
+          </span>
+          <span className="stat-sub">{forecast.confidence_pct}% confidence</span>
+        </div>
+      )}
+
       <div className="grid-2">
         <div className="card">
           <div className="card-header">
-            <h3>MEI Index Trend</h3>
-            <span className="card-badge">Last 6 months</span>
+            <h3>MEI Index Trend & Forecast</h3>
+            <span className="card-badge">{forecast ? '12mo history + 6mo forecast' : 'Last 12 months'}</span>
           </div>
           <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <ComposedChart
+              data={forecast ? [
+                ...(forecast.historical || []),
+                ...(forecast.forecast || [])
+              ] : chartData}
+              margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(15, 31, 53, 0.6)" verticalPoints={[0]} />
               <XAxis dataKey="month" stroke="#64748b" fontSize={12} />
               <YAxis stroke="#64748b" fontSize={12} domain={[-1.5, 0.5]} width={40} />
@@ -275,6 +301,16 @@ function App() {
                 strokeWidth={2}
                 label={{ value: 'La Niña (<-0.5)', fill: '#3b82f6', fontSize: 11, offset: 10 }}
               />
+              {forecast && forecast.forecast && forecast.forecast.length > 0 && (
+                <Area
+                  type="monotone"
+                  dataKey="lower"
+                  fill="rgba(59, 130, 246, 0.1)"
+                  stroke="none"
+                  isAnimationActive={false}
+                  className="forecast-band"
+                />
+              )}
               <Tooltip
                 contentStyle={{
                   background: 'rgba(13, 21, 32, 0.95)',
@@ -283,7 +319,11 @@ function App() {
                   color: '#e2e8f0',
                   padding: '10px'
                 }}
-                formatter={(value) => [value.toFixed(2), 'MEI Index']}
+                formatter={(value, name) => {
+                  if (name === 'lower' || name === 'upper') return ['', ''];
+                  if (typeof value === 'number') return [value.toFixed(2), name === 'mei' ? 'MEI Index' : name];
+                  return [value, name];
+                }}
               />
               <Line
                 type="monotone"
@@ -292,10 +332,17 @@ function App() {
                 strokeWidth={3}
                 isAnimationActive={true}
                 animationDuration={800}
-                dot={{ fill: '#0ea5e9', r: 5, strokeWidth: 2, stroke: 'rgba(14, 165, 233, 0.3)' }}
+                dot={(props) => {
+                  const { cx, cy, payload } = props;
+                  if (payload.is_forecast) {
+                    return <circle cx={cx} cy={cy} r={4} fill="#64748b" stroke="#64748b" strokeWidth={2} />;
+                  }
+                  return <circle cx={cx} cy={cy} r={5} fill="#0ea5e9" stroke="rgba(14, 165, 233, 0.3)" strokeWidth={2} />;
+                }}
+                strokeDasharray={(props) => props.is_forecast ? '5 5' : '0'}
                 activeDot={{ r: 7, strokeWidth: 2, stroke: '#ffffff' }}
               />
-            </LineChart>
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
 

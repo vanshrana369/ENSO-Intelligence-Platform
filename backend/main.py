@@ -11,6 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from ml.forecaster import run_forecast
+
 load_dotenv()
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'agents'))
@@ -150,7 +153,7 @@ def root():
         "name": "ENSO Intelligence Platform",
         "version": "1.0.0",
         "status": "running",
-        "endpoints": ["/status", "/latest-report", "/latest-report/download", "/run-now"]
+        "endpoints": ["/status", "/latest-report", "/latest-report/download", "/run-now", "/forecast"]
     }
 
 
@@ -256,6 +259,30 @@ def run_pipeline_now():
     except Exception as e:
         logger.error(f"/run-now failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/forecast")
+def get_forecast():
+    """
+    Returns 6-month ENSO phase forecast using ML model (Gradient Boosting).
+    Includes historical MEI data (12 months) and confidence intervals.
+    """
+    try:
+        forecast_data = run_forecast()
+        return JSONResponse(content=forecast_data)
+    except Exception as e:
+        logger.error(f"/forecast failed: {e}")
+        return JSONResponse(
+            status_code=200,
+            content={
+                "error": str(e),
+                "historical": [],
+                "forecast": [],
+                "predicted_phase": "Unknown",
+                "confidence_pct": 0,
+                "model_info": "Error loading forecast model"
+            }
+        )
 
 
 if __name__ == "__main__":

@@ -623,6 +623,11 @@ body {
   font-size: 0.75rem;
 }
 
+.forecast-band {
+  opacity: 0.3;
+  fill: rgba(59, 130, 246, 0.2);
+}
+
 @media (max-width: 1024px) {
   .app {
     padding: 0 24px 32px;
