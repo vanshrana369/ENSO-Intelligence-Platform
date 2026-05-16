@@ -2,8 +2,8 @@ name: Weekly ENSO Data Fetch
 
 on:
   schedule:
-    - cron: '0 8 * * 1'  # Every Monday at 8am UTC
-  workflow_dispatch:       # Also allows manual trigger
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
 
 jobs:
   fetch-data:
@@ -11,16 +11,16 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Install dependencies
         run: |
-          pip install requests pandas python-dotenv
+          pip install requests pandas python-dotenv yfinance newsapi-python
 
       - name: Fetch NOAA data
         run: python data_pipeline/fetch_noaa.py
