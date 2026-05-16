@@ -7,6 +7,7 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Commodity ticker symbols
 COMMODITIES = {
     "wheat": "ZW=F",
     "crude_oil": "CL=F",
@@ -14,39 +15,33 @@ COMMODITIES = {
 }
 
 def fetch_commodity_prices():
-    print("Script started...")
     logger.info("Fetching commodity prices...")
 
     all_data = []
 
     for name, ticker in COMMODITIES.items():
-        print(f"Trying {name} ({ticker})...")
-        try:
-            data = yf.download(ticker, period="3mo", interval="1d", progress=False)
-            print(f"Got {len(data)} rows for {name}")
-            
-            if data.empty:
-                print(f"WARNING: No data for {name}")
-                continue
+        logger.info(f"Fetching {name} ({ticker})...")
+        
+        data = yf.download(ticker, period="3mo", interval="1d", progress=False)
+        
+        if data.empty:
+            logger.warning(f"No data for {name}")
+            continue
 
-            data = data[["Close"]].copy()
-            data.columns = ["price"]
-            data["commodity"] = name
-            data["ticker"] = ticker
-            data["date"] = data.index
-            all_data.append(data)
+        data = data[["Close"]].copy()
+        data.columns = ["price"]
+        data["commodity"] = name
+        data["ticker"] = ticker
+        data["date"] = data.index
 
-        except Exception as e:
-            print(f"ERROR for {name}: {e}")
+        all_data.append(data)
 
-    if not all_data:
-        print("No data fetched for any commodity!")
-        return None
-
+    # Combine all commodities into one dataframe
     df = pd.concat(all_data)
     df = df.reset_index(drop=True)
     df = df[["date", "commodity", "ticker", "price"]]
 
+    # Save to CSV
     os.makedirs("data/raw", exist_ok=True)
     today = datetime.now().strftime("%Y-%m-%d")
     filename = f"data/raw/commodity_prices_{today}.csv"
@@ -54,6 +49,7 @@ def fetch_commodity_prices():
 
     logger.info(f"Saved {len(df)} records to {filename}")
 
+    # Print latest price for each commodity
     print("\nLatest Prices:")
     for name in COMMODITIES:
         latest = df[df["commodity"] == name].iloc[-1]
