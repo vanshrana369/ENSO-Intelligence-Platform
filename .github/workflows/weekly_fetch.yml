@@ -1,0 +1,34 @@
+name: Weekly ENSO Data Fetch
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'  # Every Monday at 8am UTC
+  workflow_dispatch:       # Also allows manual trigger
+
+jobs:
+  fetch-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests pandas python-dotenv
+
+      - name: Fetch NOAA data
+        run: python data_pipeline/fetch_noaa.py
+
+      - name: Fetch News data
+        env:
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
+        run: python data_pipeline/fetch_news.py
+
+      - name: Fetch commodity prices
+        run: python data_pipeline/fetch_prices.py
