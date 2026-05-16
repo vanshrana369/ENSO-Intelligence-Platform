@@ -203,8 +203,8 @@ class ENSOForecaster:
             for _, row in historical.iterrows()
         ]
 
-        # Get forecast
-        forecast_data = self.forecast(months_ahead=6)
+        # Get forecast (extended to 9 months to show phase transitions)
+        forecast_data = self.forecast(months_ahead=9)
 
         # Determine predicted phase from forecast
         if len(forecast_data) > 0:

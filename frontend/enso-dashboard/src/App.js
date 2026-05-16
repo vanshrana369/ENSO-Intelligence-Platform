@@ -289,7 +289,7 @@ function App() {
         <div className="card">
           <div className="card-header">
             <h3>MEI Index Trend & Forecast</h3>
-            <span className="card-badge">{forecast ? '12mo history + 6mo forecast' : 'Last 12 months'}</span>
+            <span className="card-badge">{forecast ? '12mo history + 9mo forecast' : 'Last 12 months'}</span>
           </div>
           <ResponsiveContainer width="100%" height={240}>
             <ComposedChart
