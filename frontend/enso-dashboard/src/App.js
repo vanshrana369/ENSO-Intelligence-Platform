@@ -292,14 +292,14 @@ function App() {
                 stroke="#ef4444"
                 strokeDasharray="5 5"
                 strokeWidth={2}
-                label={{ value: 'El Niño (>0.5)', fill: '#ef4444', fontSize: 11, offset: 10 }}
+                label={{ value: 'El Niño (>0.5)', fill: '#ef4444', fontSize: 10, position: 'right', offset: 5 }}
               />
               <ReferenceLine
                 y={-0.5}
                 stroke="#3b82f6"
                 strokeDasharray="5 5"
                 strokeWidth={2}
-                label={{ value: 'La Niña (<-0.5)', fill: '#3b82f6', fontSize: 11, offset: 10 }}
+                label={{ value: 'La Niña (<-0.5)', fill: '#3b82f6', fontSize: 10, position: 'left', offset: 5 }}
               />
               {forecast && forecast.forecast && forecast.forecast.length > 0 && (
                 <Area
