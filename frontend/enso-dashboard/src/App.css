@@ -1,0 +1,174 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', sans-serif;
+  background: #0a0e1a;
+  color: #e0e0e0;
+  min-height: 100vh;
+}
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 30px 20px;
+}
+
+.header {
+  text-align: center;
+  padding: 40px 0 30px;
+  margin-bottom: 30px;
+  border-bottom: 1px solid #1e2a3a;
+}
+
+.header h1 {
+  font-size: 2.4rem;
+  color: #2196F3;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.header p {
+  color: #607d8b;
+  font-size: 1rem;
+}
+
+.card {
+  background: #111827;
+  border-radius: 14px;
+  padding: 28px;
+  margin-bottom: 24px;
+  border: 1px solid #1e2a3a;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+.card h3 {
+  color: #2196F3;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #1e2a3a;
+}
+
+.phase-badge {
+  display: inline-block;
+  padding: 10px 28px;
+  border-radius: 30px;
+  color: white;
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-bottom: 20px;
+  letter-spacing: 1px;
+}
+
+.status-details {
+  display: flex;
+  gap: 30px;
+  margin-bottom: 16px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.label {
+  color: #607d8b;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.value {
+  color: white;
+  font-size: 1.3rem;
+  font-weight: bold;
+}
+
+.outlook {
+  color: #90a4ae;
+  font-size: 0.9rem;
+  font-style: italic;
+  margin-top: 8px;
+  line-height: 1.6;
+}
+
+.risk-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.risk-table th {
+  text-align: left;
+  padding: 12px 16px;
+  background: #0d1520;
+  color: #607d8b;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.risk-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #1e2a3a;
+  font-size: 0.95rem;
+}
+
+.risk-table tr:last-child td {
+  border-bottom: none;
+}
+
+.risk-badge {
+  padding: 4px 14px;
+  border-radius: 20px;
+  color: white;
+  font-size: 0.8rem;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+}
+
+.recommendations {
+  list-style: none;
+  padding: 0;
+}
+
+.recommendations li {
+  padding: 12px 0 12px 24px;
+  border-bottom: 1px solid #1e2a3a;
+  color: #b0bec5;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  position: relative;
+}
+
+.recommendations li:last-child {
+  border-bottom: none;
+}
+
+.recommendations li::before {
+  content: '→';
+  position: absolute;
+  left: 0;
+  color: #2196F3;
+  font-weight: bold;
+}
+
+.footer {
+  text-align: center;
+  padding: 24px;
+  color: #37474f;
+  font-size: 0.8rem;
+  border-top: 1px solid #1e2a3a;
+  margin-top: 10px;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  color: #2196F3;
+  font-size: 1.2rem;
+}
