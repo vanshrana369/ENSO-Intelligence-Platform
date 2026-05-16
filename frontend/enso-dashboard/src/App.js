@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts';
 import './App.css';
 
 // ── Single source of truth for the backend URL ────────────────────────────────
@@ -292,14 +292,20 @@ function App() {
                 stroke="#ef4444"
                 strokeDasharray="5 5"
                 strokeWidth={2}
-                label={{ value: 'El Niño (>0.5)', fill: '#ef4444', fontSize: 10, position: 'right', offset: 5 }}
+                name="El Niño (>0.5)"
               />
               <ReferenceLine
                 y={-0.5}
                 stroke="#3b82f6"
                 strokeDasharray="5 5"
                 strokeWidth={2}
-                label={{ value: 'La Niña (<-0.5)', fill: '#3b82f6', fontSize: 10, position: 'left', offset: 5 }}
+                name="La Niña (<-0.5)"
+              />
+              <Legend
+                verticalAlign="top"
+                height={36}
+                iconType="line"
+                wrapperStyle={{ paddingBottom: '10px' }}
               />
               {forecast && forecast.forecast && forecast.forecast.length > 0 && (
                 <Area
