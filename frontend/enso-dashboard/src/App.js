@@ -222,6 +222,13 @@ function App() {
             </div>
             <div className="phase-pill" style={phasePillStyle}>
               {phase}
+              {status?.trend && (
+                <span style={{ marginLeft: '8px', fontSize: '0.9rem' }}>
+                  {status.trend.toLowerCase().includes('rising') && '↗'}
+                  {status.trend.toLowerCase().includes('falling') && '↘'}
+                  {status.trend.toLowerCase().includes('weakening') && '↗'}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -266,7 +273,15 @@ function App() {
           }}>
             {forecast.predicted_phase}
           </span>
-          <span className="stat-sub">{forecast.confidence_pct}% confidence</span>
+          <span className="stat-sub" style={{ marginTop: '8px', lineHeight: '1.4' }}>
+            {forecast.confidence_pct}% confidence
+            <br />
+            <span style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '4px', display: 'block' }}>
+              {forecast.predicted_phase.toLowerCase().includes('transition')
+                ? 'La Niña weakening, transitioning to El Niño'
+                : 'Based on current trends'}
+            </span>
+          </span>
         </div>
       )}
 
