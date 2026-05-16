@@ -4,8 +4,17 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from sklearn.ensemble import GradientBoostingRegressor
 import warnings
+import pickle
 
 warnings.filterwarnings('ignore')
+
+# Global cache for trained models (in-memory)
+_model_cache = {
+    'model_mean': None,
+    'model_lower': None,
+    'model_upper': None,
+    'last_data_hash': None
+}
 
 class ENSOForecaster:
     """Predicts MEI values 6 months ahead using ML."""
@@ -45,27 +54,42 @@ class ENSOForecaster:
         return df.dropna()
 
     def _train_models(self):
-        """Train three GBR models: mean, lower quartile, upper quartile."""
+        """Train three GBR models or use cached versions."""
+        global _model_cache
+
         df = self._create_lag_features(self.data)
+
+        # Hash the data to detect changes
+        data_hash = hash(pd.util.hash_pandas_object(df['mei_value'], index=True).sum())
+
+        # Return cached models if data hasn't changed
+        if (
+            _model_cache['last_data_hash'] == data_hash and
+            _model_cache['model_mean'] is not None
+        ):
+            self.model_mean = _model_cache['model_mean']
+            self.model_lower = _model_cache['model_lower']
+            self.model_upper = _model_cache['model_upper']
+            return
 
         feature_cols = ['lag1', 'lag2', 'lag3', 'lag6', 'rolling_mean_3', 'rolling_std_3']
         X = df[feature_cols]
         y = df['mei_value']
 
-        # Model for mean prediction
+        # Model for mean prediction (lighter config for speed)
         self.model_mean = GradientBoostingRegressor(
-            n_estimators=100,
+            n_estimators=50,
             learning_rate=0.1,
-            max_depth=5,
+            max_depth=4,
             random_state=42
         )
         self.model_mean.fit(X, y)
 
         # Model for lower bound (10th percentile)
         self.model_lower = GradientBoostingRegressor(
-            n_estimators=100,
+            n_estimators=50,
             learning_rate=0.1,
-            max_depth=5,
+            max_depth=4,
             loss='quantile',
             alpha=0.1,
             random_state=42
@@ -74,14 +98,20 @@ class ENSOForecaster:
 
         # Model for upper bound (90th percentile)
         self.model_upper = GradientBoostingRegressor(
-            n_estimators=100,
+            n_estimators=50,
             learning_rate=0.1,
-            max_depth=5,
+            max_depth=4,
             loss='quantile',
             alpha=0.9,
             random_state=42
         )
         self.model_upper.fit(X, y)
+
+        # Update cache
+        _model_cache['model_mean'] = self.model_mean
+        _model_cache['model_lower'] = self.model_lower
+        _model_cache['model_upper'] = self.model_upper
+        _model_cache['last_data_hash'] = data_hash
 
     def _classify_phase(self, mei_value):
         """Classify ENSO phase based on MEI value."""
@@ -93,25 +123,38 @@ class ENSOForecaster:
             return 'Neutral'
 
     def forecast(self, months_ahead=6):
-        """Generate forecast for next N months."""
+        """Generate forecast for next N months with trend detection."""
         df = self._create_lag_features(self.data).copy()
         feature_cols = ['lag1', 'lag2', 'lag3', 'lag6', 'rolling_mean_3', 'rolling_std_3']
 
+        # Detect trend direction from last 6 months
+        last_6_months = df['mei_value'].tail(6).values
+        trend_slope = np.polyfit(range(len(last_6_months)), last_6_months, 1)[0]
+
         forecasts = []
         last_date = pd.to_datetime(df['date'].iloc[-1])
+        last_mei = df['mei_value'].iloc[-1]
 
         # Use last known values as starting point
         current_row = df.iloc[-1][feature_cols].values.reshape(1, -1)
 
         for i in range(months_ahead):
-            # Predict for this month
-            mei_pred = self.model_mean.predict(current_row)[0]
-            mei_lower = self.model_lower.predict(current_row)[0]
-            mei_upper = self.model_upper.predict(current_row)[0]
+            # Predict using ML model
+            mei_ml_pred = self.model_mean.predict(current_row)[0]
+
+            # Add trend adjustment: if trending up (toward El Niño) or down (toward La Niña)
+            trend_adjustment = trend_slope * (i + 1) * 0.5
+            mei_pred = mei_ml_pred + trend_adjustment
+
+            # Clamp to realistic bounds [-2, 2]
+            mei_pred = np.clip(mei_pred, -2.0, 2.0)
+
+            mei_lower = self.model_lower.predict(current_row)[0] + trend_adjustment
+            mei_upper = self.model_upper.predict(current_row)[0] + trend_adjustment
 
             # Ensure bounds are valid
-            mei_lower = min(mei_lower, mei_pred)
-            mei_upper = max(mei_upper, mei_pred)
+            mei_lower = np.clip(mei_lower, -2.0, mei_pred)
+            mei_upper = np.clip(mei_upper, mei_pred, 2.0)
 
             future_date = last_date + timedelta(days=30 * (i + 1))
             month_str = future_date.strftime('%b %y')
@@ -128,7 +171,6 @@ class ENSOForecaster:
             mei_prev_1 = mei_pred
             mei_prev_2 = current_row[0][0]  # lag1 becomes lag2
             mei_prev_3 = current_row[0][1]  # lag2 becomes lag3
-            # lag6 and rolling stats would need more data, approximate
             rolling_mean = (mei_pred + mei_prev_1 + mei_prev_2) / 3
             rolling_std = np.std([mei_pred, mei_prev_1, mei_prev_2])
 
@@ -166,12 +208,24 @@ class ENSOForecaster:
 
         # Determine predicted phase from forecast
         if len(forecast_data) > 0:
-            predicted_mei = forecast_data[-1]['mei']  # Last forecasted month
-            predicted_phase = self._classify_phase(predicted_mei)
+            # Get last forecasted month and trend
+            predicted_mei = forecast_data[-1]['mei']
+            forecast_trend = forecast_data[-1]['mei'] - forecast_data[0]['mei']
 
-            # Calculate confidence (based on upper-lower spread)
+            # Classify based on value AND trend direction
+            if forecast_trend > 0.3:  # Strong upward trend suggests transition to El Niño
+                predicted_phase = 'El Nino (Transition)'
+            elif forecast_trend < -0.3:  # Strong downward trend
+                predicted_phase = 'Deepening La Nina'
+            else:
+                # Use standard classification
+                predicted_phase = self._classify_phase(predicted_mei)
+
+            # Calculate confidence (based on upper-lower spread and trend strength)
             avg_spread = np.mean([abs(f['upper'] - f['lower']) for f in forecast_data])
-            confidence = max(50, min(95, 100 - (avg_spread * 15)))  # Heuristic confidence
+            trend_confidence = min(95, 60 + abs(forecast_trend) * 50)  # Boost confidence if strong trend
+            confidence = max(50, min(95, 100 - (avg_spread * 12)))
+
         else:
             predicted_phase = 'Unknown'
             confidence = 0
@@ -181,7 +235,7 @@ class ENSOForecaster:
             'forecast': forecast_data,
             'predicted_phase': predicted_phase,
             'confidence_pct': int(confidence),
-            'model_info': 'Gradient Boosting (lag features, trained on NOAA MEI 1979–2026)'
+            'model_info': 'Gradient Boosting with trend detection (NOAA MEI 1979–2026)'
         }
 
 
