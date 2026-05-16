@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Database connection
-DB_URL = "postgresql://postgres:9213546700@localhost:5432/enso_db"
+DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:9213546700@localhost:5432/enso_db")
 
 def get_engine():
     engine = create_engine(DB_URL)
