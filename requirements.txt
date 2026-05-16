@@ -12,12 +12,9 @@ langchain
 langchain-groq
 langgraph
 reportlab
-torch
-torchvision
-transformers
+newsapi-python
 xarray
 netCDF4
 matplotlib
 scikit-learn
 Pillow
-newsapi-python
