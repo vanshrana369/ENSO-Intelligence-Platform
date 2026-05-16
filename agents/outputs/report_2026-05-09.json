@@ -1,0 +1,30 @@
+{
+  "report_date": "2026-04-09",
+  "executive_summary": "The current La Ni\u00f1a event is persisting with a moderate intensity, as indicated by a MEI value of -1.03. This has led to moderate price fluctuations in the soybean market, with a 20-30% probability of price changes.",
+  "enso_status": {
+    "phase": "La Nina",
+    "mei_value": -1.03,
+    "trend": "falling",
+    "outlook": "The La Ni\u00f1a event is expected to continue, with potential impacts on global weather patterns."
+  },
+  "market_risks": {
+    "wheat": {
+      "risk_level": "Low",
+      "outlook": "Wheat prices are expected to remain stable, ranging between $700-$800 per ton."
+    },
+    "crude_oil": {
+      "risk_level": "Medium",
+      "outlook": "Crude oil prices are likely to experience moderate fluctuations due to increased demand from El Ni\u00f1o-impacted regions."
+    },
+    "soybean": {
+      "risk_level": "Medium",
+      "outlook": "Soybean prices are likely to remain stable, ranging between $1150-$1200 per ton, with a 20-30% probability of moderate price changes."
+    }
+  },
+  "key_recommendations": [
+    "Monitor soybean market closely for potential price changes.",
+    "Assess climate-related risks for wheat and crude oil markets.",
+    "Develop strategic plans to mitigate potential impacts of El Ni\u00f1o on global commodity markets."
+  ],
+  "risk_score": 5
+}
