@@ -22,9 +22,9 @@ ENSO Intelligence Platform is a full-stack application that provides real-time c
 ## ✨ Key Features
 
 🌊 **Real-Time ENSO Phase Tracking**
-- Live Multivariate ENSO Index (MEI) with 6-month trend visualization
+- Live Multivariate ENSO Index (MEI) with 12-month history + 9-month ML forecast
 - Color-coded phase indicators (Red: El Niño, Blue: La Niña, Gray: Neutral)
-- Dynamic threshold reference lines (±0.5) with clear labels
+- Dynamic threshold reference lines (±0.5) with legend and confidence bands
 
 📊 **Commodity Market Risk Analysis**
 - Automated risk assessment for crops, energy, and water sectors
@@ -37,6 +37,14 @@ ENSO Intelligence Platform is a full-stack application that provides real-time c
 - Agent 2: ENSO phase analysis and historical pattern matching
 - Agent 3: Commodity market impact forecasting using Groq LLM
 - Agent 4: Structured report generation with PDF export
+
+📊 **Advanced Analytics Dashboard**
+- Phase probability distribution (el Niño/La Niña/Neutral likelihood)
+- Forecast accuracy metrics from model backtesting
+- Anomaly detection using z-score analysis
+- Seasonal decomposition (Trend/Seasonal/Residual)
+- Commodity sensitivity correlation analysis
+- Historical event pattern matching using cosine similarity
 
 📰 **Live Climate News Integration**
 - Real-time aggregated news on El Niño/La Niña impact
@@ -249,7 +257,7 @@ AI-generated climate intelligence report.
 ```
 
 ### GET `/mei-history`
-Historical MEI values (6+ months) for chart rendering.
+Historical MEI values (12 months) for chart rendering.
 ```json
 [
   {"month": "Oct 25", "mei": -1.19},
@@ -257,6 +265,42 @@ Historical MEI values (6+ months) for chart rendering.
   ...
 ]
 ```
+
+### GET `/forecast`
+9-month MEI forecast with ML model (Gradient Boosting) including confidence intervals.
+```json
+{
+  "historical": [{"month": "Oct 25", "mei": -1.19, "is_forecast": false}, ...],
+  "forecast": [{"month": "Mar 26", "mei": -0.93, "lower": -1.05, "upper": -0.68, "is_forecast": true}, ...],
+  "predicted_phase": "El Nino (Transition)",
+  "confidence_pct": 94,
+  "model_info": "Gradient Boosting with trend detection (NOAA MEI 1979–2026)"
+}
+```
+
+### GET `/analytics`
+Advanced analytics with 6 features for deep climate intelligence analysis.
+```json
+{
+  "phase_probabilities": {"el_nino": 55, "la_nina": 25, "neutral": 20},
+  "forecast_accuracy": {"mae": 0.18, "accuracy_pct": 82, "direction_accuracy": 75},
+  "anomaly": {"is_anomaly": false, "z_score": 0.8, "message": "MEI changing at normal rate"},
+  "seasonal": {"trend": [...], "seasonal": [...], "residual": [...]},
+  "commodity_sensitivity": {"wheat": 0.72, "crude_oil": -0.45, "soybean": 0.68},
+  "similar_events": [
+    {"period": "2010-11 to 2011-10", "similarity_pct": 91, "outcome": "La Nina strengthened"},
+    ...
+  ]
+}
+```
+
+**6 Analytics Features:**
+1. **Phase Probability Distribution** — Likelihood of each ENSO phase based on historical frequency at current MEI level
+2. **Forecast Accuracy Metrics** — Backtested model performance (MAE, accuracy %, direction accuracy)
+3. **Anomaly Detection** — Z-score based detection of unusual MEI movements
+4. **Seasonal Decomposition** — Trend/Seasonal/Residual components for pattern analysis
+5. **Commodity Sensitivity** — Pearson correlation between MEI and commodity prices
+6. **Similar Historical Events** — Cosine similarity search for past 12-month patterns matching current state
 
 ### POST `/run-now`
 Trigger the analysis pipeline immediately.
@@ -304,16 +348,22 @@ Recharts handles dynamic data without manual optimizations:
 - Animations on data updates
 - Touch-friendly on mobile (via CSS media queries)
 
-### In-Memory Caching
-Backend caches MEI data fetched from NOAA to avoid redundant API calls:
+### ML-Based ENSO Forecasting
+Gradient Boosting model with lag feature engineering predicts MEI 9 months ahead:
 ```python
-cache = {}
-async def get_mei():
-    if 'mei' in cache and cache['mei_age'] < 3600:  # 1 hour TTL
-        return cache['mei']
-    data = await fetch_from_noaa()
-    cache['mei'] = data
-    return data
+# Features: lag1-6 months, rolling mean/std (3mo)
+# Models: mean prediction + quantile regression (10th/90th percentile)
+# Trend detection: if upward trend, predict "El Nino (Transition)"
+# Output: 9-month forecast with confidence intervals
+```
+**Impact:** Captures phase transitions (La Niña → El Niño) that rule-based thresholds miss.
+
+### In-Memory Caching
+Backend caches trained ML models to avoid retraining on every request:
+```python
+# Global cache stores trained GradientBoostingRegressor models
+# Hash-based invalidation when NOAA data updates
+# /forecast endpoint responds in <500ms instead of 2-3s
 ```
 
 ---

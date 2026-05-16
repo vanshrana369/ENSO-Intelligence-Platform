@@ -10,9 +10,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
+from apscheduler.schedulers.background import BackgroundScheduler
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from ml.forecaster import run_forecast
+from ml.analytics import run_analytics
 
 load_dotenv()
 
@@ -45,6 +47,34 @@ app.add_middleware(
 # dyno restart. We keep the last successful report in memory so /status and
 # /latest-report always have something to serve within the same dyno session.
 _report_cache: dict = {}
+
+# ── Background scheduler for weekly pipeline runs ────────────────────────────────
+scheduler = BackgroundScheduler()
+
+
+def _scheduled_pipeline_job():
+    """Background job: run the pipeline every Monday at 9 AM UTC."""
+    try:
+        logger.info("⏰ Scheduled pipeline job triggered (Monday 9 AM UTC)")
+        from pipeline import run_pipeline
+        from pdf_generator import generate_pdf
+
+        result = run_pipeline()
+
+        # Update in-memory cache
+        files = glob.glob("outputs/report_*.json")
+        if files:
+            with open(max(files)) as f:
+                report = json.load(f)
+            _report_cache.clear()
+            _report_cache.update(report)
+            logger.info("✅ Scheduled pipeline completed — cache updated")
+
+        # Generate PDF
+        generate_pdf(_report_cache or result)
+        logger.info("📄 PDF generated for scheduled run")
+    except Exception as e:
+        logger.error(f"❌ Scheduled pipeline failed: {e}")
 
 
 def _load_report_from_disk() -> dict | None:
@@ -138,11 +168,34 @@ def startup():
             logger.info("Pre-warmed report cache from disk")
 
         logger.info("Startup complete!")
+
+        # Start scheduled pipeline runs (every Monday at 9 AM UTC)
+        if not scheduler.running:
+            scheduler.add_job(
+                _scheduled_pipeline_job,
+                'cron',
+                day_of_week=0,  # Monday (0 = Monday, 6 = Sunday)
+                hour=9,
+                minute=0,
+                timezone='UTC',
+                id='weekly_pipeline',
+                name='Weekly ENSO Pipeline Run'
+            )
+            scheduler.start()
+            logger.info("📅 Scheduled pipeline job registered: every Monday at 9 AM UTC")
     except Exception as e:
         logger.error(f"Startup failed: {e}")
 
 
 startup()
+
+
+# ── Shutdown ────────────────────────────────────────────────────────────────────
+@app.on_event("shutdown")
+def shutdown_event():
+    if scheduler.running:
+        scheduler.shutdown()
+        logger.info("Scheduler shut down")
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -153,7 +206,7 @@ def root():
         "name": "ENSO Intelligence Platform",
         "version": "1.0.0",
         "status": "running",
-        "endpoints": ["/status", "/latest-report", "/latest-report/download", "/run-now", "/forecast"]
+        "endpoints": ["/status", "/latest-report", "/latest-report/download", "/run-now", "/forecast", "/analytics"]
     }
 
 
@@ -281,6 +334,36 @@ def get_forecast():
                 "predicted_phase": "Unknown",
                 "confidence_pct": 0,
                 "model_info": "Error loading forecast model"
+            }
+        )
+
+
+@app.get("/analytics")
+def get_analytics():
+    """
+    Returns advanced analytics:
+    - Phase probability distribution
+    - Forecast accuracy metrics
+    - Anomaly detection
+    - Seasonal decomposition
+    - Commodity sensitivity analysis
+    - Similar historical events
+    """
+    try:
+        analytics = run_analytics()
+        return JSONResponse(content=analytics)
+    except Exception as e:
+        logger.error(f"/analytics failed: {e}")
+        return JSONResponse(
+            status_code=200,
+            content={
+                "error": str(e),
+                "phase_probabilities": {"el_nino": 0, "la_nina": 0, "neutral": 0},
+                "forecast_accuracy": {"mae": 0, "accuracy_pct": 0, "direction_accuracy": 0},
+                "anomaly": {"is_anomaly": False, "z_score": 0, "message": "Error"},
+                "seasonal": {"trend": [], "seasonal": [], "residual": []},
+                "commodity_sensitivity": {"wheat": 0, "crude_oil": 0, "soybean": 0},
+                "similar_events": []
             }
         )
 

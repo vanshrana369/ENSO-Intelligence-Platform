@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts';
+import { ComposedChart, BarChart, LineChart, Bar, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts';
 import './App.css';
 
 // ── Single source of truth for the backend URL ────────────────────────────────
@@ -29,6 +29,7 @@ function App() {
   const [noData, setNoData]   = useState(false);
   const [chartData, setChartData] = useState(mockChartData);
   const [forecast, setForecast] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -40,8 +41,9 @@ function App() {
       axios.get(API_BASE + '/latest-report'),
       axios.get(API_BASE + '/mei-history').catch(() => null),
       axios.get(API_BASE + '/forecast').catch(() => null),
+      axios.get(API_BASE + '/analytics').catch(() => null),
     ])
-      .then(([s, r, h, f]) => {
+      .then(([s, r, h, f, a]) => {
         // /status returns 503 + {status:"no_data"} when pipeline hasn't run yet
         if (s.data?.status === 'no_data') {
           setNoData(true);
@@ -57,6 +59,10 @@ function App() {
           // Set forecast if available
           if (f?.data && f.data.forecast) {
             setForecast(f.data);
+          }
+          // Set analytics if available
+          if (a?.data && a.data.status === 'success') {
+            setAnalytics(a.data);
           }
         }
         setLoading(false);
@@ -442,6 +448,214 @@ function App() {
           </div>
         </div>
       </div>
+
+      {analytics && (
+        <>
+          {/* ── Section 1: Phase Probabilities + Forecast Accuracy ─────────────────────── */}
+          <div className="grid-2">
+            <div className="card">
+              <div className="card-header">
+                <h3>Phase Probability Distribution</h3>
+              </div>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={[
+                  { name: 'El Niño', value: analytics.phase_probabilities.el_nino },
+                  { name: 'La Niña', value: analytics.phase_probabilities.la_nina },
+                  { name: 'Neutral', value: analytics.phase_probabilities.neutral }
+                ]} margin={{ top: 5, right: 30, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(15, 31, 53, 0.6)" />
+                  <XAxis dataKey="name" stroke="#64748b" fontSize={11} />
+                  <YAxis stroke="#64748b" fontSize={11} domain={[0, 100]} />
+                  <Tooltip
+                    contentStyle={{
+                      background: 'rgba(13, 21, 32, 0.95)',
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                      borderRadius: '8px',
+                      color: '#e2e8f0'
+                    }}
+                    formatter={(value) => `${value}%`}
+                  />
+                  <Bar dataKey="value" fill="#0ea5e9" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="card">
+              <div className="card-header">
+                <h3>Forecast Accuracy</h3>
+              </div>
+              <div className="analytics-metrics">
+                <div className="metric-row">
+                  <span className="metric-label">Mean Absolute Error</span>
+                  <span className="metric-value">{analytics.forecast_accuracy.mae}</span>
+                </div>
+                <div className="metric-row">
+                  <span className="metric-label">Accuracy (±0.3)</span>
+                  <span className="metric-value">{analytics.forecast_accuracy.accuracy_pct}%</span>
+                </div>
+                <div className="metric-row">
+                  <span className="metric-label">Direction Accuracy</span>
+                  <span className="metric-value">{analytics.forecast_accuracy.direction_accuracy}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Section 2: Anomaly Detection + Commodity Sensitivity ──────────────────── */}
+          <div className="grid-2">
+            <div className="card">
+              <div className="card-header">
+                <h3>Anomaly Detection</h3>
+              </div>
+              <div style={{ padding: '20px', textAlign: 'center' }}>
+                <div style={{
+                  fontSize: '3rem',
+                  marginBottom: '12px',
+                  color: analytics.anomaly.is_anomaly ? '#ef4444' : '#10b981'
+                }}>
+                  {analytics.anomaly.is_anomaly ? '⚠' : '✓'}
+                </div>
+                <div style={{ color: '#e2e8f0', fontSize: '0.95rem', marginBottom: '8px' }}>
+                  {analytics.anomaly.is_anomaly ? 'Unusual activity detected' : 'Normal activity'}
+                </div>
+                <div style={{ color: '#64748b', fontSize: '0.8rem' }}>
+                  Z-Score: {analytics.anomaly.z_score}
+                </div>
+                <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginTop: '12px' }}>
+                  {analytics.anomaly.message}
+                </div>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-header">
+                <h3>Commodity Sensitivity</h3>
+              </div>
+              <div className="commodity-sensitivity">
+                {Object.entries(analytics.commodity_sensitivity).map(([commodity, correlation]) => {
+                  const absCorr = Math.abs(correlation);
+                  const barColor = correlation > 0 ? '#10b981' : '#ef4444';
+                  return (
+                    <div key={commodity} className="sensitivity-row">
+                      <span className="sensitivity-label">{commodity.replace('_', ' ').toUpperCase()}</span>
+                      <div className="sensitivity-bar-wrapper">
+                        <div className="sensitivity-bar" style={{
+                          width: (absCorr * 100) + '%',
+                          background: barColor,
+                          height: '6px',
+                          borderRadius: '3px'
+                        }}></div>
+                      </div>
+                      <span className="sensitivity-value">{correlation.toFixed(2)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Section 3: Similar Historical Events ───────────────────────────────────── */}
+          {analytics.similar_events && analytics.similar_events.length > 0 && (
+            <div className="card">
+              <div className="card-header">
+                <h3>Similar Historical Events</h3>
+                <span className="card-badge">Cosine similarity search</span>
+              </div>
+              <div className="similar-events-grid">
+                {analytics.similar_events.map((event, i) => (
+                  <div className="event-card" key={i}>
+                    <div className="event-header">
+                      <div className="event-period">{event.period}</div>
+                      <div className="event-similarity">{event.similarity_pct}% similar</div>
+                    </div>
+                    <div className="event-outcome">
+                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>What happened:</span>
+                      <p>{event.outcome}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Section 4: Seasonal Decomposition ──────────────────────────────────────── */}
+          {analytics.seasonal && analytics.seasonal.trend && analytics.seasonal.trend.length > 0 && (
+            <div className="card">
+              <div className="card-header">
+                <h3>Seasonal Decomposition</h3>
+                <span className="card-badge">Trend • Seasonal • Residual</span>
+              </div>
+              <div className="decomposition-grid">
+                <div className="decomposition-chart">
+                  <h4 style={{ marginBottom: '12px', fontSize: '0.95rem' }}>Trend</h4>
+                  <ResponsiveContainer width="100%" height={120}>
+                    <LineChart data={analytics.seasonal.trend.slice(-12).map((val, idx) => ({
+                      idx,
+                      value: val
+                    }))} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(15, 31, 53, 0.6)" />
+                      <XAxis dataKey="idx" stroke="#64748b" fontSize={10} />
+                      <YAxis stroke="#64748b" fontSize={10} />
+                      <Tooltip contentStyle={{
+                        background: 'rgba(13, 21, 32, 0.95)',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        borderRadius: '4px',
+                        color: '#e2e8f0',
+                        fontSize: '0.75rem'
+                      }} />
+                      <Line type="monotone" dataKey="value" stroke="#0ea5e9" isAnimationActive={false} strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="decomposition-chart">
+                  <h4 style={{ marginBottom: '12px', fontSize: '0.95rem' }}>Seasonal</h4>
+                  <ResponsiveContainer width="100%" height={120}>
+                    <LineChart data={analytics.seasonal.seasonal.slice(-12).map((val, idx) => ({
+                      idx,
+                      value: val
+                    }))} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(15, 31, 53, 0.6)" />
+                      <XAxis dataKey="idx" stroke="#64748b" fontSize={10} />
+                      <YAxis stroke="#64748b" fontSize={10} />
+                      <Tooltip contentStyle={{
+                        background: 'rgba(13, 21, 32, 0.95)',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        borderRadius: '4px',
+                        color: '#e2e8f0',
+                        fontSize: '0.75rem'
+                      }} />
+                      <Line type="monotone" dataKey="value" stroke="#8b5cf6" isAnimationActive={false} strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="decomposition-chart">
+                  <h4 style={{ marginBottom: '12px', fontSize: '0.95rem' }}>Residual</h4>
+                  <ResponsiveContainer width="100%" height={120}>
+                    <LineChart data={analytics.seasonal.residual.slice(-12).map((val, idx) => ({
+                      idx,
+                      value: val
+                    }))} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(15, 31, 53, 0.6)" />
+                      <XAxis dataKey="idx" stroke="#64748b" fontSize={10} />
+                      <YAxis stroke="#64748b" fontSize={10} />
+                      <Tooltip contentStyle={{
+                        background: 'rgba(13, 21, 32, 0.95)',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        borderRadius: '4px',
+                        color: '#e2e8f0',
+                        fontSize: '0.75rem'
+                      }} />
+                      <Line type="monotone" dataKey="value" stroke="#f59e0b" isAnimationActive={false} strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
       <footer className="footer">
         <div className="footer-content">
