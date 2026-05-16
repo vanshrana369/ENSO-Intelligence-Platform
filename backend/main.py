@@ -26,16 +26,47 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# ── CORS ──────────────────────────────────────────────────────────────────────
+# allow_credentials MUST be False when allow_origins=["*"].
+# Browsers reject credentialed requests to a wildcard origin (CORS spec §3.2.2).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=False,   # ← was missing; caused silent CORS failures
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ── In-memory report cache ────────────────────────────────────────────────────
+# Render's filesystem is ephemeral — files written by /run-now vanish on
+# dyno restart. We keep the last successful report in memory so /status and
+# /latest-report always have something to serve within the same dyno session.
+_report_cache: dict = {}
+
+
+def _load_report_from_disk() -> dict | None:
+    """Try to load the newest report JSON from the outputs/ directory."""
+    files = glob.glob("outputs/report_*.json")
+    if not files:
+        return None
+    with open(max(files)) as f:
+        return json.load(f)
+
+
+def _get_report() -> dict | None:
+    """Return cached report, falling back to disk if cache is empty."""
+    if _report_cache:
+        return _report_cache
+    report = _load_report_from_disk()
+    if report:
+        _report_cache.update(report)
+    return _report_cache or None
+
+
+# ── Startup ───────────────────────────────────────────────────────────────────
 def startup():
     try:
-        logger.info("Running startup - initializing database...")
+        logger.info("Running startup — initializing database...")
         engine = create_engine(DB_URL)
         with engine.connect() as conn:
             conn.execute(text("""
@@ -80,13 +111,12 @@ def startup():
             logger.info(f"Stored {len(df)} commodity records")
 
         # Load news data
-        import json as json_module
         news_files = glob.glob("data/raw/news/*.json")
         if news_files:
             rows = []
-            for f in news_files:
-                with open(f) as nf:
-                    articles = json_module.load(nf)
+            for nf_path in news_files:
+                with open(nf_path) as nf:
+                    articles = json.load(nf)
                 for article in articles:
                     rows.append({
                         "date": article.get("publishedAt", "")[:10],
@@ -98,11 +128,21 @@ def startup():
             df.to_sql("news_data", engine, if_exists="replace", index=False)
             logger.info(f"Stored {len(df)} news records")
 
+        # Pre-warm the in-memory cache from any existing report on disk
+        existing = _load_report_from_disk()
+        if existing:
+            _report_cache.update(existing)
+            logger.info("Pre-warmed report cache from disk")
+
         logger.info("Startup complete!")
     except Exception as e:
         logger.error(f"Startup failed: {e}")
 
+
 startup()
+
+
+# ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/")
 def root():
@@ -113,62 +153,110 @@ def root():
         "endpoints": ["/status", "/latest-report", "/latest-report/download", "/run-now"]
     }
 
+
 @app.get("/status")
 def get_status():
-    files = glob.glob("outputs/report_*.json")
-    if not files:
-        raise HTTPException(status_code=404, detail="No reports found.")
-    latest = max(files)
-    with open(latest) as f:
-        report = json.load(f)
+    """
+    Returns a concise status object.
+
+    Priority: in-memory cache → disk → 503 with helpful message.
+    Never raises 404 on Render where the filesystem may be empty.
+    """
+    report = _get_report()
+
+    if not report:
+        # Return a structured "not ready" response instead of a 404.
+        # The frontend can detect this and show a "Run pipeline first" prompt.
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "no_data",
+                "message": "No report available yet. POST /run-now to generate one.",
+                "phase": None,
+                "mei_value": None,
+                "risk_score": None,
+                "report_date": None,
+                "last_updated": datetime.now().isoformat(),
+            }
+        )
+
     enso = report.get("enso_status", {})
+
+    # Defensive: handle both {"enso_status": {"phase": ...}} and flat {"phase": ...}
+    phase = enso.get("phase") or report.get("phase") or report.get("enso_phase") or "Unknown"
+    mei   = enso.get("mei_value") or report.get("mei_value") or 0
+    trend = enso.get("trend") or report.get("trend") or ""
+    outlook = enso.get("outlook") or report.get("outlook") or ""
+
     return {
-        "phase": enso.get("phase", "Unknown"),
-        "mei_value": enso.get("mei_value", 0),
-        "trend": enso.get("trend", ""),
-        "outlook": enso.get("outlook", ""),
+        "status": "ok",
+        "phase": phase,
+        "mei_value": mei,
+        "trend": trend,
+        "outlook": outlook,
         "risk_score": report.get("risk_score", 0),
         "report_date": report.get("report_date", ""),
-        "last_updated": datetime.now().isoformat()
+        "last_updated": datetime.now().isoformat(),
     }
+
 
 @app.get("/latest-report")
 def get_latest_report():
-    files = glob.glob("outputs/report_*.json")
-    if not files:
-        raise HTTPException(status_code=404, detail="No reports found.")
-    latest = max(files)
-    with open(latest) as f:
-        report = json.load(f)
+    """Returns the full report JSON."""
+    report = _get_report()
+    if not report:
+        raise HTTPException(
+            status_code=503,
+            detail="No report available yet. POST /run-now to generate one."
+        )
     return JSONResponse(content=report)
+
 
 @app.get("/latest-report/download")
 def download_report():
     files = glob.glob("outputs/ENSO_Report_*.pdf")
     if not files:
-        raise HTTPException(status_code=404, detail="No PDF found.")
+        raise HTTPException(status_code=404, detail="No PDF found. Run /run-now first.")
     latest = max(files)
     return FileResponse(latest, media_type="application/pdf", filename=os.path.basename(latest))
 
+
 @app.post("/run-now")
 def run_pipeline_now():
+    """
+    Triggers the agent pipeline.
+
+    On success, populates the in-memory cache so /status and /latest-report
+    serve live data immediately — even if Render's disk is wiped on next deploy.
+    """
     try:
         from pipeline import run_pipeline
         from pdf_generator import generate_pdf
+
         result = run_pipeline()
+
+        # ── Update in-memory cache ────────────────────────────────────────────
+        # read the report file that run_pipeline() just wrote to disk…
         files = glob.glob("outputs/report_*.json")
-        latest = max(files)
-        with open(latest) as f:
-            report = json.load(f)
-        pdf_path = generate_pdf(report)
+        if files:
+            with open(max(files)) as f:
+                report = json.load(f)
+            _report_cache.clear()
+            _report_cache.update(report)
+            logger.info("In-memory report cache updated after run-now")
+
+        pdf_path = generate_pdf(_report_cache or result)
+
         return {
             "status": "success",
-            "enso_phase": result.get("enso_phase", ""),
+            "enso_phase": result.get("enso_phase", _report_cache.get("phase", "")),
             "pdf_generated": pdf_path,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
     except Exception as e:
+        logger.error(f"/run-now failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     import uvicorn
