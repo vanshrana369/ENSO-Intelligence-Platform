@@ -249,8 +249,8 @@ curl -X POST http://localhost:8000/run-now
 
 - [x] Project setup + GitHub repo
 - [x] Week 1: NOAA + NewsAPI + yfinance data pipeline
-- [ ] Week 2: LangGraph multi-agent system (4 agents)
-- [ ] Week 3: Agent 4 (Report Generator) + PDF output
+- [x] Week 2: LangGraph multi-agent system (4 agents)
+- [x] Week 3: Agent 4 (Report Generator) + PDF output
 - [ ] Week 4: Celery automation + FastAPI + GitHub Actions
 - [ ] Week 5: NASA satellite data pipeline + CNN baseline
 - [ ] Week 6: Vision Transformer fine-tuning + GradCAM
