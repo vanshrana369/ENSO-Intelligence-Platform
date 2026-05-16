@@ -412,12 +412,18 @@ function App() {
             <span className="card-badge">AI Generated</span>
           </div>
           <div className="recommendations">
-            {report?.key_recommendations?.map((rec, i) => (
-              <div className="rec-item" key={i}>
-                <span className="rec-number">{i + 1}</span>
-                <p>{rec}</p>
+            {report?.key_recommendations && report.key_recommendations.length > 0 ? (
+              report.key_recommendations.map((rec, i) => (
+                <div className="rec-item" key={i}>
+                  <span className="rec-number">{i + 1}</span>
+                  <p>{rec}</p>
+                </div>
+              ))
+            ) : (
+              <div style={{ padding: '12px', color: '#64748b', fontSize: '0.85rem' }}>
+                Run the pipeline to generate AI recommendations
               </div>
-            ))}
+            )}
           </div>
         </div>
 
