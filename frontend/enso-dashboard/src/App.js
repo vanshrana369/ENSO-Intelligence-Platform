@@ -27,6 +27,7 @@ function App() {
   const [error, setError]     = useState(null);
   const [running, setRunning] = useState(false);
   const [noData, setNoData]   = useState(false);
+  const [chartData, setChartData] = useState(mockChartData);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -36,14 +37,21 @@ function App() {
     Promise.all([
       axios.get(API_BASE + '/status'),
       axios.get(API_BASE + '/latest-report'),
+      axios.get(API_BASE + '/mei-history').catch(() => null),
     ])
-      .then(([s, r]) => {
+      .then(([s, r, h]) => {
         // /status returns 503 + {status:"no_data"} when pipeline hasn't run yet
         if (s.data?.status === 'no_data') {
           setNoData(true);
         } else {
           setStatus(s.data);
           setReport(r.data);
+          // Use MEI history from backend if available, otherwise use mock data
+          if (h?.data && Array.isArray(h.data)) {
+            setChartData(h.data);
+          } else {
+            setChartData(mockChartData);
+          }
         }
         setLoading(false);
       })
@@ -248,17 +256,45 @@ function App() {
             <h3>MEI Index Trend</h3>
             <span className="card-badge">Last 6 months</span>
           </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={mockChartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#0f1f35" />
-              <XAxis dataKey="month" stroke="#475569" fontSize={11} />
-              <YAxis stroke="#475569" fontSize={11} domain={[-1.5, 0.5]} />
-              <ReferenceLine y={0.5}  stroke="#ef4444" strokeDasharray="4 4" label={{ value: 'El Niño', fill: '#ef4444', fontSize: 10 }} />
-              <ReferenceLine y={-0.5} stroke="#3b82f6" strokeDasharray="4 4" label={{ value: 'La Niña', fill: '#3b82f6', fontSize: 10 }} />
-              <Tooltip
-                contentStyle={{ background: '#0d1520', border: '1px solid #0f1f35', borderRadius: '8px', color: '#e2e8f0' }}
+          <ResponsiveContainer width="100%" height={240}>
+            <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(15, 31, 53, 0.6)" verticalPoints={[0]} />
+              <XAxis dataKey="month" stroke="#64748b" fontSize={12} />
+              <YAxis stroke="#64748b" fontSize={12} domain={[-1.5, 0.5]} width={40} />
+              <ReferenceLine
+                y={0.5}
+                stroke="#ef4444"
+                strokeDasharray="5 5"
+                strokeWidth={2}
+                label={{ value: 'El Niño (>0.5)', fill: '#ef4444', fontSize: 11, offset: 10 }}
               />
-              <Line type="monotone" dataKey="mei" stroke={phaseColor} strokeWidth={2.5} dot={{ fill: phaseColor, r: 4 }} activeDot={{ r: 6 }} />
+              <ReferenceLine
+                y={-0.5}
+                stroke="#3b82f6"
+                strokeDasharray="5 5"
+                strokeWidth={2}
+                label={{ value: 'La Niña (<-0.5)', fill: '#3b82f6', fontSize: 11, offset: 10 }}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: 'rgba(13, 21, 32, 0.95)',
+                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                  borderRadius: '8px',
+                  color: '#e2e8f0',
+                  padding: '10px'
+                }}
+                formatter={(value) => [value.toFixed(2), 'MEI Index']}
+              />
+              <Line
+                type="monotone"
+                dataKey="mei"
+                stroke="#0ea5e9"
+                strokeWidth={3}
+                isAnimationActive={true}
+                animationDuration={800}
+                dot={{ fill: '#0ea5e9', r: 5, strokeWidth: 2, stroke: 'rgba(14, 165, 233, 0.3)' }}
+                activeDot={{ r: 7, strokeWidth: 2, stroke: '#ffffff' }}
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>
