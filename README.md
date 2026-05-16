@@ -440,7 +440,8 @@ Backend caches trained ML models to avoid retraining on every request:
 
 ## 👤 Author
 
-**Vansh Rana** | B.Tech Computer Science
+**Vansh Rana** | B.Tech Computer Science  
+AI-powered climate intelligence platform for ENSO analysis
 
 📧 [vanshranaglobal@gmail.com](mailto:vanshranaglobal@gmail.com)  
 💼 [GitHub](https://github.com/vanshrana369)  
