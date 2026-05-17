@@ -62,10 +62,13 @@ def _scheduled_pipeline_job():
         result = run_pipeline()
 
         # Update in-memory cache and persist to DB
-        files = glob.glob("outputs/report_*.json")
-        if files:
-            with open(max(files)) as f:
-                report = json.load(f)
+        report = result.get("final_report") if isinstance(result, dict) else None
+        if not report:
+            files = glob.glob("outputs/report_*.json")
+            if files:
+                with open(max(files)) as f:
+                    report = json.load(f)
+        if report:
             _report_cache.clear()
             _report_cache.update(report)
             _save_report_to_db(report)
@@ -332,14 +335,23 @@ def _run_pipeline_background():
         logger.info("Background pipeline started...")
         result = run_pipeline()
 
-        files = glob.glob("outputs/report_*.json")
-        if files:
-            with open(max(files)) as f:
-                report = json.load(f)
+        # Use final_report from pipeline result directly — avoids disk path issues
+        report = result.get("final_report") if isinstance(result, dict) else None
+
+        # Fallback: try reading from disk
+        if not report:
+            files = glob.glob("outputs/report_*.json")
+            if files:
+                with open(max(files)) as f:
+                    report = json.load(f)
+
+        if report:
             _report_cache.clear()
             _report_cache.update(report)
             _save_report_to_db(report)
             logger.info("Background pipeline complete — cache + DB updated")
+        else:
+            logger.error("Pipeline completed but no report found in result or disk")
 
         generate_pdf(_report_cache or result)
     except Exception as e:
