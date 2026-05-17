@@ -61,14 +61,15 @@ def _scheduled_pipeline_job():
 
         result = run_pipeline()
 
-        # Update in-memory cache
+        # Update in-memory cache and persist to DB
         files = glob.glob("outputs/report_*.json")
         if files:
             with open(max(files)) as f:
                 report = json.load(f)
             _report_cache.clear()
             _report_cache.update(report)
-            logger.info("✅ Scheduled pipeline completed — cache updated")
+            _save_report_to_db(report)
+            logger.info("✅ Scheduled pipeline completed — cache + DB updated")
 
         # Generate PDF
         generate_pdf(_report_cache or result)
@@ -77,20 +78,49 @@ def _scheduled_pipeline_job():
         logger.error(f"❌ Scheduled pipeline failed: {e}")
 
 
-def _load_report_from_disk() -> dict | None:
-    """Try to load the newest report JSON from the outputs/ directory."""
-    files = glob.glob("outputs/report_*.json")
-    if not files:
-        return None
-    with open(max(files)) as f:
-        return json.load(f)
+def _save_report_to_db(report: dict) -> None:
+    """Upsert the report JSON into the reports table keyed by report_date."""
+    try:
+        engine = create_engine(DB_URL)
+        report_date = report.get("report_date", datetime.now().strftime("%Y-%m-%d"))
+        with engine.connect() as conn:
+            conn.execute(text("""
+                INSERT INTO reports (report_date, report_json)
+                VALUES (:date, :json)
+                ON CONFLICT (report_date) DO UPDATE SET report_json = EXCLUDED.report_json, created_at = NOW()
+            """), {"date": report_date, "json": json.dumps(report)})
+            conn.commit()
+        logger.info(f"Report saved to DB for date {report_date}")
+    except Exception as e:
+        logger.error(f"Failed to save report to DB: {e}")
+
+
+def _load_report_from_db() -> dict | None:
+    """Load the most recent report JSON from the reports table."""
+    try:
+        engine = create_engine(DB_URL)
+        with engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT report_json FROM reports ORDER BY report_date DESC LIMIT 1"
+            )).fetchone()
+        if row:
+            return json.loads(row[0])
+    except Exception as e:
+        logger.error(f"Failed to load report from DB: {e}")
+    return None
 
 
 def _get_report() -> dict | None:
-    """Return cached report, falling back to disk if cache is empty."""
+    """Return cached report, falling back to DB then disk if cache is empty."""
     if _report_cache:
         return _report_cache
-    report = _load_report_from_disk()
+    report = _load_report_from_db()
+    if not report:
+        # Fallback: try local disk (for local dev without a DB)
+        files = glob.glob("outputs/report_*.json")
+        if files:
+            with open(max(files)) as f:
+                report = json.load(f)
     if report:
         _report_cache.update(report)
     return _report_cache or None
@@ -127,6 +157,14 @@ def startup():
                     price FLOAT
                 )
             """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS reports (
+                    id SERIAL PRIMARY KEY,
+                    report_date DATE UNIQUE,
+                    report_json JSONB NOT NULL,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
             conn.commit()
         logger.info("Tables created!")
 
@@ -161,11 +199,19 @@ def startup():
             df.to_sql("news_data", engine, if_exists="replace", index=False)
             logger.info(f"Stored {len(df)} news records")
 
-        # Pre-warm the in-memory cache from any existing report on disk
-        existing = _load_report_from_disk()
+        # Pre-warm the in-memory cache from DB (survives Render redeploys)
+        existing = _load_report_from_db()
         if existing:
             _report_cache.update(existing)
-            logger.info("Pre-warmed report cache from disk")
+            logger.info("Pre-warmed report cache from DB")
+        else:
+            # Fallback for local dev: try disk
+            files = glob.glob("outputs/report_*.json")
+            if files:
+                with open(max(files)) as f:
+                    existing = json.load(f)
+                _report_cache.update(existing)
+                logger.info("Pre-warmed report cache from disk (local fallback)")
 
         logger.info("Startup complete!")
 
@@ -291,15 +337,15 @@ def run_pipeline_now():
 
         result = run_pipeline()
 
-        # ── Update in-memory cache ────────────────────────────────────────────
-        # read the report file that run_pipeline() just wrote to disk…
+        # ── Update in-memory cache and persist to DB ──────────────────────────
         files = glob.glob("outputs/report_*.json")
         if files:
             with open(max(files)) as f:
                 report = json.load(f)
             _report_cache.clear()
             _report_cache.update(report)
-            logger.info("In-memory report cache updated after run-now")
+            _save_report_to_db(report)
+            logger.info("In-memory report cache + DB updated after run-now")
 
         pdf_path = generate_pdf(_report_cache or result)
 
