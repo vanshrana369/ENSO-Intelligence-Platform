@@ -5,7 +5,7 @@ import glob
 import logging
 import pandas as pd
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
@@ -323,21 +323,15 @@ def download_report():
     return FileResponse(latest, media_type="application/pdf", filename=os.path.basename(latest))
 
 
-@app.post("/run-now")
-def run_pipeline_now():
-    """
-    Triggers the agent pipeline.
-
-    On success, populates the in-memory cache so /status and /latest-report
-    serve live data immediately — even if Render's disk is wiped on next deploy.
-    """
+def _run_pipeline_background():
+    """Runs the full pipeline in a background thread and updates cache + DB."""
     try:
         from pipeline import run_pipeline
         from pdf_generator import generate_pdf
 
+        logger.info("Background pipeline started...")
         result = run_pipeline()
 
-        # ── Update in-memory cache and persist to DB ──────────────────────────
         files = glob.glob("outputs/report_*.json")
         if files:
             with open(max(files)) as f:
@@ -345,19 +339,33 @@ def run_pipeline_now():
             _report_cache.clear()
             _report_cache.update(report)
             _save_report_to_db(report)
-            logger.info("In-memory report cache + DB updated after run-now")
+            logger.info("Background pipeline complete — cache + DB updated")
 
-        pdf_path = generate_pdf(_report_cache or result)
-
-        return {
-            "status": "success",
-            "enso_phase": result.get("enso_phase", _report_cache.get("phase", "")),
-            "pdf_generated": pdf_path,
-            "timestamp": datetime.now().isoformat(),
-        }
+        generate_pdf(_report_cache or result)
     except Exception as e:
-        logger.error(f"/run-now failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Background pipeline failed: {e}")
+
+
+@app.post("/run-now")
+def run_pipeline_now(
+    background_tasks: BackgroundTasks,
+    x_cron_secret: str | None = Header(default=None)
+):
+    """
+    Triggers the agent pipeline in the background and returns immediately.
+    This allows external cron services (30s timeout) to trigger long-running jobs.
+    Protected by CRON_SECRET env var when set — pass as X-Cron-Secret header.
+    """
+    expected = os.getenv("CRON_SECRET")
+    if expected and x_cron_secret != expected:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-Cron-Secret header")
+
+    background_tasks.add_task(_run_pipeline_background)
+    return {
+        "status": "accepted",
+        "message": "Pipeline started in background. Check /status in ~3 minutes.",
+        "timestamp": datetime.now().isoformat(),
+    }
 
 
 @app.get("/forecast")
