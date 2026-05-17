@@ -727,7 +727,7 @@ function App() {
             ENSO Intelligence Platform — Built by <span style={{ color: '#60a5fa' }}>Vansh Rana</span> — B.Tech Computer Science
           </p>
           <p className="footer-sub">
-            Powered by NASA Satellite Data · NOAA MEI Index · Groq LLM · LangGraph Multi-Agent AI
+            Powered by NOAA MEI Index · Yahoo Finance · NewsAPI · Groq LLM · LangGraph Multi-Agent AI
           </p>
         </div>
       </footer>
