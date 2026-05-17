@@ -107,7 +107,11 @@ def _load_report_from_db() -> dict | None:
                 "SELECT report_json FROM reports ORDER BY report_date DESC LIMIT 1"
             )).fetchone()
         if row:
-            return json.loads(row[0])
+            data = row[0]
+            # psycopg2 auto-deserializes JSONB to dict; handle both dict and str
+            if isinstance(data, dict):
+                return data
+            return json.loads(data)
     except Exception as e:
         logger.error(f"Failed to load report from DB: {e}")
     return None
