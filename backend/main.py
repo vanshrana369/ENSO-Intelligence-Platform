@@ -323,11 +323,42 @@ def get_latest_report():
 
 @app.get("/latest-report/download")
 def download_report():
+    from fastapi.responses import StreamingResponse
+    import io
+
+    # Try disk first (fast path)
     files = glob.glob("outputs/ENSO_Report_*.pdf")
-    if not files:
-        raise HTTPException(status_code=404, detail="No PDF found. Run /run-now first.")
-    latest = max(files)
-    return FileResponse(latest, media_type="application/pdf", filename=os.path.basename(latest))
+    if files:
+        latest = max(files)
+        return FileResponse(latest, media_type="application/pdf", filename=os.path.basename(latest))
+
+    # Disk empty (Render restarted) — generate from DB report on-the-fly
+    report = _get_report()
+    if not report:
+        raise HTTPException(status_code=404, detail="No report available yet. Run the pipeline first.")
+
+    try:
+        from pdf_generator import generate_pdf
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        generate_pdf(report, output_path=tmp_path)
+
+        with open(tmp_path, "rb") as f:
+            pdf_bytes = f.read()
+        os.unlink(tmp_path)
+
+        filename = f"ENSO_Report_{report.get('report_date', 'latest')}.pdf"
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        logger.error(f"PDF generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
 
 def _run_pipeline_background():
