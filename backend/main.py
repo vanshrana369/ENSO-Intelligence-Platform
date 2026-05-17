@@ -414,6 +414,22 @@ def get_forecast():
         )
 
 
+@app.get("/db-check")
+def db_check():
+    """Debug: verify latest report exists in DB."""
+    try:
+        engine = create_engine(DB_URL)
+        with engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT report_date, created_at FROM reports ORDER BY report_date DESC LIMIT 1"
+            )).fetchone()
+        if row:
+            return {"db_has_report": True, "report_date": str(row[0]), "saved_at": str(row[1])}
+        return {"db_has_report": False}
+    except Exception as e:
+        return {"db_has_report": False, "error": str(e)}
+
+
 @app.get("/analytics")
 def get_analytics():
     """
