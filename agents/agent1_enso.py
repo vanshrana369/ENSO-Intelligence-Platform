@@ -1,10 +1,13 @@
 import os
+import sys
 import logging
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from sqlalchemy import create_engine, text
 
 load_dotenv()
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'data_pipeline'))
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -38,6 +41,19 @@ def determine_enso_phase(mei_value):
 
 def run_agent1(state):
     logger.info("Agent 1: ENSO Monitor starting...")
+
+    # Refresh MEI and commodity data from live sources before analysis
+    try:
+        from fetch_noaa import fetch_mei_data
+        fetch_mei_data()
+    except Exception as e:
+        logger.warning(f"MEI data refresh failed (using existing DB data): {e}")
+
+    try:
+        from fetch_prices import fetch_commodity_prices
+        fetch_commodity_prices()
+    except Exception as e:
+        logger.warning(f"Commodity price refresh failed (using existing DB data): {e}")
 
     rows = get_latest_enso_data()
     latest_mei = rows[0][1]
