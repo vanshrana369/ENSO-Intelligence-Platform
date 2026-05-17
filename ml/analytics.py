@@ -5,6 +5,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 from scipy import stats
 import glob
 
+# Absolute path to project root (two levels up from this file: ml/ → project root)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 def get_phase_probabilities(mei_value, mei_data):
     """
     Calculate probability of each ENSO phase based on historical frequency
@@ -125,7 +128,7 @@ def seasonal_decomposition(mei_data):
     values = mei_data['mei_value'].values
 
     # Trend: 12-month moving average
-    trend = pd.Series(values).rolling(window=12, center=True).mean().fillna(method='bfill').fillna(method='ffill').values
+    trend = pd.Series(values).rolling(window=12, center=True).mean().bfill().ffill().values
 
     # Detrended
     detrended = values - trend
@@ -148,11 +151,14 @@ def seasonal_decomposition(mei_data):
     }
 
 
-def commodity_sensitivity(mei_data, commodity_path='data/raw'):
+def commodity_sensitivity(mei_data, commodity_path=None):
     """
     Calculate Pearson correlation between MEI and each commodity price.
     """
     correlations = {}
+
+    if commodity_path is None:
+        commodity_path = str(_PROJECT_ROOT / 'data' / 'raw')
 
     # Find latest commodity prices CSV
     commodity_files = glob.glob(f"{commodity_path}/commodity_prices_*.csv")
@@ -238,11 +244,14 @@ def find_similar_events(mei_data, n_similar=3):
     return similar_events
 
 
-def run_analytics(mei_data_path='data/raw/mei_index.csv'):
+def run_analytics(mei_data_path=None):
     """
     Main function: compute all analytics and return as single JSON.
     """
     try:
+        if mei_data_path is None:
+            mei_data_path = str(_PROJECT_ROOT / 'data' / 'raw' / 'mei_index.csv')
+
         # Load data
         mei_data = pd.read_csv(mei_data_path)
         mei_data['date'] = pd.to_datetime(mei_data['date'])

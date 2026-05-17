@@ -63,6 +63,9 @@ def run_agent4(state):
         ],
         "risk_score": 7
     }}
+
+    IMPORTANT: risk_score must be an integer between 1 and 10 (NOT 0-100 scale).
+    Example: 3 = low risk, 6 = medium risk, 9 = high risk.
     """
 
     response = llm.invoke(prompt)
