@@ -4,14 +4,13 @@ import os
 import logging
 from datetime import datetime
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
 
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:9213546700@localhost:5432/enso_db")
+DB_URL = os.getenv("DATABASE_URL", "")
 
 # Commodity ticker symbols
 COMMODITIES = {
@@ -55,25 +54,27 @@ def fetch_commodity_prices():
 
     logger.info(f"Saved {len(df)} records to {filename}")
 
-    # Store to DB
-    try:
-        engine = create_engine(DB_URL)
-        with engine.connect() as conn:
-            conn.execute(text("TRUNCATE TABLE commodity_prices"))
-            for _, row in df.iterrows():
-                conn.execute(text("""
-                    INSERT INTO commodity_prices (date, commodity, ticker, price)
-                    VALUES (:date, :commodity, :ticker, :price)
-                """), {
-                    "date": str(row["date"])[:10],
-                    "commodity": row["commodity"],
-                    "ticker": row["ticker"],
-                    "price": float(row["price"])
-                })
-            conn.commit()
-        logger.info(f"Stored {len(df)} commodity price records to DB")
-    except Exception as e:
-        logger.error(f"Failed to store commodity prices to DB: {e}")
+    # Store to DB (skipped if no DATABASE_URL configured)
+    if DB_URL:
+        try:
+            from sqlalchemy import create_engine, text
+            engine = create_engine(DB_URL)
+            with engine.connect() as conn:
+                conn.execute(text("TRUNCATE TABLE commodity_prices"))
+                for _, row in df.iterrows():
+                    conn.execute(text("""
+                        INSERT INTO commodity_prices (date, commodity, ticker, price)
+                        VALUES (:date, :commodity, :ticker, :price)
+                    """), {
+                        "date": str(row["date"])[:10],
+                        "commodity": row["commodity"],
+                        "ticker": row["ticker"],
+                        "price": float(row["price"])
+                    })
+                conn.commit()
+            logger.info(f"Stored {len(df)} commodity price records to DB")
+        except Exception as e:
+            logger.error(f"Failed to store commodity prices to DB: {e}")
 
     print("\nLatest Prices:")
     for name in COMMODITIES:
