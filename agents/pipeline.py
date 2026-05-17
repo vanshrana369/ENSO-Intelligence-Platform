@@ -22,6 +22,7 @@ class ENSOState(TypedDict):
     news_insights: str
     market_risks: str
     commodity_prices: dict
+    raw_news_items: list
     final_report: dict
 
 def build_pipeline():
@@ -63,6 +64,7 @@ def run_pipeline():
         "news_insights": "",
         "market_risks": "",
         "commodity_prices": {},
+        "raw_news_items": [],
         "final_report": {}
     }
 

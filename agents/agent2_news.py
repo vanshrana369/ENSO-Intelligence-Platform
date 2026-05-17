@@ -73,9 +73,16 @@ def run_agent2(state):
     print(f"Headlines analyzed: {len(rows)}")
     print(f"\nInsights:\n{insights}")
 
+    # Pass raw news items through the pipeline so the final report can include them
+    raw_news = [
+        {"title": row[1], "source": row[2], "date": str(row[0])}
+        for row in rows
+    ]
+
     return {
         **state,
-        "news_insights": insights
+        "news_insights": insights,
+        "raw_news_items": raw_news
     }
 
 if __name__ == "__main__":

@@ -23,49 +23,61 @@ def run_agent4(state):
     enso_summary = state.get("enso_summary", "")
     news_insights = state.get("news_insights", "")
     market_risks = state.get("market_risks", "")
+    raw_news_items = state.get("raw_news_items", [])
 
     # ── Get TODAY's date in the format the LLM should use ──────────────────────
     today = datetime.now().strftime("%Y-%m-%d")
 
     prompt = f"""
-    You are a senior climate intelligence analyst. 
-    Generate a structured professional report in JSON format only.
-    No extra text, just valid JSON.
-    
+    You are a senior climate intelligence analyst writing a professional briefing.
+    Generate a structured report in JSON format only. No extra text, just valid JSON.
+
     Use this data:
     - ENSO Phase: {enso_phase}
     - MEI Value: {latest_mei}
     - ENSO Analysis: {enso_summary}
-    - News Insights: {news_insights[:600]}
-    - Market Risks: {market_risks[:600]}
-    
+    - News Insights: {news_insights[:800]}
+    - Market Risks: {market_risks[:800]}
+
     TODAY'S DATE IS: {today}
-    
+
     Return exactly this JSON structure (IMPORTANT: use {today} for report_date):
     {{
         "report_date": "{today}",
-        "executive_summary": "2-3 sentence overview",
+        "executive_summary": "3-4 sentence overview covering: current ENSO phase and MEI value, key market implications, and near-term outlook. Be specific about mechanisms and magnitudes.",
         "enso_status": {{
             "phase": "El Nino/La Nina/Neutral",
             "mei_value": {latest_mei},
-            "trend": "rising/falling/stable",
-            "outlook": "1 sentence outlook"
+            "trend": "strengthening/weakening/stable",
+            "outlook": "2 sentence outlook covering transition probability and timeline"
         }},
         "market_risks": {{
-            "wheat": {{"risk_level": "Low/Medium/High", "outlook": "one line"}},
-            "crude_oil": {{"risk_level": "Low/Medium/High", "outlook": "one line"}},
-            "soybean": {{"risk_level": "Low/Medium/High", "outlook": "one line"}}
+            "wheat": {{
+                "risk_level": "Low/Medium/High/Extreme",
+                "outlook": "2-3 sentences: (1) how current {enso_phase} specifically affects wheat growing regions, (2) which countries/regions are most exposed, (3) expected price direction with rough magnitude (e.g. +5-15% upside risk over 6 months)"
+            }},
+            "crude_oil": {{
+                "risk_level": "Low/Medium/High/Extreme",
+                "outlook": "2-3 sentences: (1) ENSO impact on energy demand and production regions, (2) specific supply chain or demand drivers, (3) price outlook with direction and rough range"
+            }},
+            "soybean": {{
+                "risk_level": "Low/Medium/High/Extreme",
+                "outlook": "2-3 sentences: (1) impact on South American and US growing conditions under {enso_phase}, (2) yield risk and demand dynamics, (3) price direction with rough magnitude"
+            }}
         }},
         "key_recommendations": [
-            "recommendation 1",
-            "recommendation 2",
-            "recommendation 3"
+            "Specific actionable recommendation 1 with commodity, action, and timeframe (e.g. 'Reduce wheat exposure by 15-20% over next 60 days given elevated drought risk in Black Sea region under La Nina')",
+            "Specific actionable recommendation 2 referencing ENSO mechanism and hedging instrument or strategy",
+            "Specific actionable recommendation 3 covering portfolio diversification or alternative assets with climate resilience rationale"
         ],
         "risk_score": 7
     }}
 
-    IMPORTANT: risk_score must be an integer between 1 and 10 (NOT 0-100 scale).
-    Example: 3 = low risk, 6 = medium risk, 9 = high risk.
+    RULES:
+    - risk_score: integer 1-10 only (NOT 0-100). 1-3=low, 4-6=medium, 7-8=high, 9-10=extreme.
+    - All outlook text must be specific to {enso_phase} conditions, not generic.
+    - Include real geographic regions, crop names, and percentage estimates where possible.
+    - Recommendations must start with an action verb and include a commodity and timeframe.
     """
 
     response = llm.invoke(prompt)
@@ -86,9 +98,12 @@ def run_agent4(state):
         report = json.loads(clean)
         
         # ── CRITICAL: Ensure report_date is TODAY, not what LLM returned ──────
-        # (LLM sometimes gets dates wrong; we override it to be safe)
         report["report_date"] = today
-        
+
+        # ── Attach real news items from DB (bypasses LLM for accuracy) ─────────
+        if raw_news_items:
+            report["news_items"] = raw_news_items[:6]
+
         logger.info("JSON parsed successfully")
         
     except json.JSONDecodeError as e:
@@ -115,7 +130,8 @@ def run_agent4(state):
                 "Check raw LLM output in debug logs."
             ],
             "risk_score": 5,
-            "raw_llm_output": raw_output[:500]  # Store truncated LLM response for debugging
+            "news_items": raw_news_items[:6],
+            "raw_llm_output": raw_output[:500]
         }
 
     # ── Save report to file ───────────────────────────────────────────────────
