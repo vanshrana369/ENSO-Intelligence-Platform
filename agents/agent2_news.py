@@ -1,10 +1,14 @@
 import os
+import sys
 import logging
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from sqlalchemy import create_engine, text
 
 load_dotenv()
+
+# Allow importing from data_pipeline/
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'data_pipeline'))
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -42,6 +46,13 @@ def _is_climate_relevant(title: str) -> bool:
 
 def run_agent2(state):
     logger.info("Agent 2: News Analyst starting...")
+
+    # Fetch fresh news from NewsAPI and store to DB before reading
+    try:
+        from fetch_news import fetch_enso_news
+        fetch_enso_news()
+    except Exception as e:
+        logger.warning(f"Live news fetch failed (using existing DB data): {e}")
 
     # Get enso context from Agent 1
     enso_summary = state.get("enso_summary", "La Nina conditions detected")
