@@ -181,7 +181,7 @@ body {
 
 .stats-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 16px;
   margin-bottom: 20px;
 }
@@ -626,6 +626,12 @@ body {
 .forecast-band {
   opacity: 0.3;
   fill: rgba(59, 130, 246, 0.2);
+}
+
+@media (max-width: 1200px) {
+  .stats-row {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 @media (max-width: 1024px) {
@@ -1079,5 +1085,233 @@ body {
 
   .sensitivity-value {
     font-size: 0.7rem;
+  }
+}
+
+/* ── Header: last-updated timestamp ──────────────────────────────────────── */
+.header-updated {
+  font-size: 0.68rem;
+  color: #475569;
+  letter-spacing: 0.3px;
+  margin-right: 4px;
+}
+
+/* ── Stat card: mini risk bar ─────────────────────────────────────────────── */
+.stat-risk-bar {
+  height: 3px;
+  background: rgba(100, 116, 139, 0.15);
+  border-radius: 2px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.stat-risk-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 6px currentColor;
+}
+
+/* ── Stat card: sparkline ─────────────────────────────────────────────────── */
+.stat-sparkline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.stat-delta {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+/* ── Phase Timeline ───────────────────────────────────────────────────────── */
+.phase-timeline-card {
+  background: linear-gradient(135deg, rgba(15, 20, 41, 0.7) 0%, rgba(21, 31, 54, 0.5) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.12);
+  border-radius: 16px;
+  padding: 18px 24px 14px;
+  margin-bottom: 20px;
+}
+
+.phase-tl-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.phase-tl-title {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.phase-tl-legend {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.tl-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.68rem;
+  color: #64748b;
+}
+
+.tl-forecast-label {
+  color: #475569;
+  font-style: italic;
+  font-size: 0.66rem;
+}
+
+.tl-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.phase-tl-track {
+  display: flex;
+  height: 34px;
+  border-radius: 6px;
+  overflow: visible;
+  gap: 2px;
+  margin-bottom: 6px;
+  position: relative;
+}
+
+.phase-tl-seg {
+  flex: 1;
+  border-radius: 3px;
+  position: relative;
+  cursor: default;
+  transition: filter 0.15s, opacity 0.15s;
+}
+
+.phase-tl-seg:hover {
+  filter: brightness(1.4);
+}
+
+.phase-tl-seg.is-forecast {
+  border-top: 2px dashed rgba(255, 255, 255, 0.18);
+}
+
+.tl-now-pin {
+  position: absolute;
+  bottom: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  color: #cbd5e1;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.phase-tl-months {
+  display: flex;
+  margin-top: 18px;
+}
+
+.phase-tl-month {
+  flex: 1;
+  font-size: 0.58rem;
+  color: #475569;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* ── Risk gauge ───────────────────────────────────────────────────────────── */
+.risk-gauge-wrap {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.risk-gauge-label {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+
+/* ── Commodity card: icon + border ───────────────────────────────────────── */
+.commodity-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.commodity-icon {
+  font-size: 1.3rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* ── News: meta row + link ────────────────────────────────────────────────── */
+.news-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+  flex-wrap: wrap;
+}
+
+.news-domain {
+  font-size: 0.6rem;
+  color: #475569;
+}
+
+.news-date {
+  font-size: 0.6rem;
+  color: #475569;
+  margin-left: auto;
+}
+
+.news-link {
+  display: block;
+  color: #e2e8f0;
+  text-decoration: none;
+  transition: color 0.2s;
+  line-height: 1.6;
+  font-size: 0.85rem;
+  position: relative;
+  z-index: 1;
+}
+
+.news-link:hover {
+  color: #60a5fa;
+}
+
+/* ── Responsive tweaks for new elements ──────────────────────────────────── */
+@media (max-width: 768px) {
+  .phase-tl-legend {
+    display: none;
+  }
+
+  .phase-tl-track {
+    height: 28px;
+  }
+
+  .header-updated {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .phase-timeline-card {
+    padding: 14px 16px 12px;
+  }
+
+  .phase-tl-month {
+    font-size: 0.52rem;
   }
 }
