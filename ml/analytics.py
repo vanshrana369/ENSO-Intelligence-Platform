@@ -2,11 +2,27 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from sklearn.metrics.pairwise import cosine_similarity
-from scipy import stats
 import glob
 
 # Absolute path to project root (two levels up from this file: ml/ → project root)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _native(obj):
+    """Recursively convert NumPy scalars/arrays to plain Python types for JSON serialization."""
+    if isinstance(obj, dict):
+        return {k: _native(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_native(v) for v in obj]
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return float(obj)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return obj
 
 def get_phase_probabilities(mei_value, mei_data):
     """
@@ -260,7 +276,7 @@ def run_analytics(mei_data_path=None):
 
         current_mei = mei_data['mei_value'].iloc[-1]
 
-        return {
+        result = {
             'phase_probabilities': get_phase_probabilities(current_mei, mei_data),
             'forecast_accuracy': get_forecast_accuracy(mei_data),
             'anomaly': detect_anomalies(mei_data),
@@ -269,11 +285,12 @@ def run_analytics(mei_data_path=None):
             'similar_events': find_similar_events(mei_data),
             'status': 'success'
         }
+        return _native(result)
     except Exception as e:
         return {
             'phase_probabilities': {'el_nino': 33, 'la_nina': 33, 'neutral': 34},
             'forecast_accuracy': {'mae': 0, 'accuracy_pct': 0, 'direction_accuracy': 0},
-            'anomaly': {'is_anomaly': False, 'z_score': 0, 'message': 'Unable to compute'},
+            'anomaly': {'is_anomaly': False, 'z_score': 0, 'message': f'Compute error: {str(e)}'},
             'seasonal': {'trend': [], 'seasonal': [], 'residual': []},
             'commodity_sensitivity': {'wheat': 0, 'crude_oil': 0, 'soybean': 0},
             'similar_events': [],

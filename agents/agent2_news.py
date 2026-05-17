@@ -28,6 +28,18 @@ def get_latest_news():
         rows = result.fetchall()
     return rows
 
+_CLIMATE_KEYWORDS = [
+    'enso', 'el niño', 'el nino', 'la niña', 'la nina', 'climate', 'weather',
+    'drought', 'flood', 'temperature', 'rainfall', 'monsoon', 'pacific', 'ocean',
+    'sea surface', 'sst', 'commodity', 'wheat', 'soybean', 'crude oil', 'crop',
+    'agriculture', 'harvest', 'storm', 'cyclone', 'hurricane', 'precipitation',
+    'food price', 'food security', 'wmo', 'noaa', 'global warming'
+]
+
+def _is_climate_relevant(title: str) -> bool:
+    t = title.lower()
+    return any(kw in t for kw in _CLIMATE_KEYWORDS)
+
 def run_agent2(state):
     logger.info("Agent 2: News Analyst starting...")
 
@@ -35,12 +47,13 @@ def run_agent2(state):
     enso_summary = state.get("enso_summary", "La Nina conditions detected")
     enso_phase = state.get("enso_phase", "La Nina")
 
-    # Get news from DB
+    # Get news from DB and filter to climate-relevant only
     rows = get_latest_news()
+    rows = [r for r in rows if _is_climate_relevant(r[1])]
 
     if not rows:
-        logger.warning("No news found in database")
-        return {"news_insights": "No recent news available"}
+        logger.warning("No climate-relevant news found in database")
+        return {"news_insights": "No recent climate news available"}
 
     # Format headlines for LLM
     headlines = "\n".join([
