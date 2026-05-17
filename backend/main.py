@@ -353,13 +353,23 @@ def run_pipeline_now(
 ):
     """
     Triggers the agent pipeline in the background and returns immediately.
-    This allows external cron services (30s timeout) to trigger long-running jobs.
-    Protected by CRON_SECRET env var when set — pass as X-Cron-Secret header.
+    Protected by CRON_SECRET env var when set — for use by cron-job.org only.
     """
     expected = os.getenv("CRON_SECRET")
     if expected and x_cron_secret != expected:
         raise HTTPException(status_code=401, detail="Invalid or missing X-Cron-Secret header")
 
+    background_tasks.add_task(_run_pipeline_background)
+    return {
+        "status": "accepted",
+        "message": "Pipeline started in background. Check /status in ~3 minutes.",
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+@app.post("/trigger")
+def trigger_pipeline(background_tasks: BackgroundTasks):
+    """Public endpoint for the dashboard Run Now button — no auth required."""
     background_tasks.add_task(_run_pipeline_background)
     return {
         "status": "accepted",

@@ -246,10 +246,10 @@ function App() {
   const triggerRunNow = async () => {
     setRunning(true);
     try {
-      await axios.post(API_BASE + '/run-now');
+      await axios.post(API_BASE + '/trigger');
       setTimeout(() => { fetchData(); setRunning(false); }, 3000);
     } catch (e) {
-      console.error('run-now failed:', e);
+      console.error('trigger failed:', e);
       setRunning(false);
     }
   };
