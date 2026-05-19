@@ -12,8 +12,8 @@
   --purple:  #a855f7;
   --cyan:    #00d4ff;   /* La Niña phase indicator */
 
-  --bg:      #100804;
-  --bg-card: rgba(22, 8, 4, 0.75);
+  --bg:      #030810;
+  --bg-card: rgba(8, 5, 12, 0.78);
   --border:  rgba(255, 107, 53, 0.18);
   --border-b: rgba(255, 107, 53, 0.38);
 
@@ -22,15 +22,22 @@
   --text-3:  #5c2e18;
 }
 
-/* ── Body — deep warm ocean, El Niño heat anomaly ───────────────────────────── */
+/* ── Body — El Niño SST anomaly map aesthetic ───────────────────────────────── */
 body {
   font-family: 'Inter', -apple-system, sans-serif;
+  /* Layered like a real SST anomaly chart:
+     1. Climate data dot grid
+     2. El Niño warm tongue (center-east, the signature anomaly)
+     3. Secondary eastern warm pool
+     4. Cool western Pacific edge (La Niña contrast zone)
+     5. Deep ocean base */
   background:
-    radial-gradient(ellipse at 15% 25%, rgba(200, 70, 10, 0.24) 0%, transparent 60%),
-    radial-gradient(ellipse at 85% 75%, rgba(255, 120, 30, 0.16) 0%, transparent 55%),
-    radial-gradient(ellipse at 50% 95%, rgba(160, 30, 5, 0.18) 0%, transparent 50%),
-    linear-gradient(175deg, #160904 0%, #0e0705 40%, #080405 100%);
-  background-attachment: fixed;
+    radial-gradient(circle, rgba(255, 107, 53, 0.055) 1px, transparent 1px) 0 0 / 28px 28px,
+    radial-gradient(ellipse 78% 48% at 68% 56%, rgba(210, 55, 0, 0.22) 0%, rgba(255, 100, 10, 0.07) 55%, transparent 78%),
+    radial-gradient(ellipse at 90% 38%, rgba(255, 130, 20, 0.14) 0%, transparent 40%),
+    radial-gradient(ellipse at 5% 58%, rgba(0, 22, 100, 0.18) 0%, transparent 36%),
+    linear-gradient(168deg, #030810 0%, #050a0e 45%, #070608 100%);
+  background-attachment: fixed, fixed, fixed, fixed, fixed;
   color: var(--text-1);
   min-height: 100vh;
   line-height: 1.6;
@@ -107,6 +114,27 @@ body {
   box-shadow: 0 0 20px rgba(255, 107, 53, 0.28);
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── SST temperature scale bar — El Niño anomaly map signature ──────────────── */
+.sst-scale-bar {
+  height: 3px;
+  width: 100%;
+  background: linear-gradient(
+    90deg,
+    #1e40ff 0%,       /* Deep cold — La Niña */
+    #3b82f6 10%,      /* Cold */
+    #60a5fa 18%,      /* Cool */
+    #93c5fd 24%,      /* Slightly cool */
+    #fef08a 38%,      /* Neutral — yellow */
+    #fbbf24 50%,      /* Warm */
+    #f97316 62%,      /* Orange */
+    #ea580c 72%,      /* Deep orange */
+    #dc2626 82%,      /* Red — El Niño */
+    #991b1b 92%,      /* Intense red */
+    #7f1d1d 100%      /* Extreme warm anomaly */
+  );
+  opacity: 0.85;
+}
 
 /* ── Header ─────────────────────────────────────────────────────────────────── */
 .header {

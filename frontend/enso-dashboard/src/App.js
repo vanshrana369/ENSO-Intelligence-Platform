@@ -48,7 +48,7 @@ function useCountUp(target, duration = 1100) {
   return val;
 }
 
-// ── Ocean particle background ─────────────────────────────────────────────────
+// ── SST Anomaly background — El Niño heat-map aesthetic ──────────────────────
 function OceanBackground({ phase }) {
   const canvasRef = useRef(null);
   const mouseRef = useRef({ x: -9999, y: -9999 });
@@ -61,9 +61,6 @@ function OceanBackground({ phase }) {
 
     const isLaNina = phase?.toLowerCase().includes('nina');
     const isElNino = phase?.toLowerCase().includes('nino') || phase?.toLowerCase().includes('niño');
-    // La Niña → vivid cyan, El Niño → intense warm coral, Neutral → warm amber-orange
-    const base = isLaNina ? [0, 200, 255] : isElNino ? [255, 100, 30] : [255, 140, 50];
-    const glowColor = `rgba(${base[0]},${base[1]},${base[2]},0.18)`;
 
     const resize = () => {
       canvas.width = window.innerWidth;
@@ -71,73 +68,110 @@ function OceanBackground({ phase }) {
     };
     resize();
 
-    const count = Math.min(Math.floor((canvas.width * canvas.height) / 9000), 180);
-    const particles = Array.from({ length: count }, () => ({
-      x: Math.random() * canvas.width,
-      y: Math.random() * canvas.height,
-      r: Math.random() * 3.5 + 1.0,
-      vx: (Math.random() - 0.5) * 0.5,
-      vy: -(Math.random() * 0.4 + 0.08),
-      opacity: Math.random() * 0.5 + 0.25,
-      phase: Math.random() * Math.PI * 2,
-    }));
+    // SST anomaly color scale: temp -1 (cold La Niña) → 0 (neutral) → +1 (warm El Niño)
+    const sstColor = (t) => {
+      if (t >  0.7) return [255,  35,   0];   // Intense red — extreme warm anomaly
+      if (t >  0.4) return [255,  95,  10];   // Deep orange
+      if (t >  0.1) return [255, 160,  40];   // Amber-orange
+      if (t > -0.1) return [255, 210, 100];   // Yellow — neutral
+      if (t > -0.4) return [ 80, 160, 255];   // Sky blue — mild cool
+      return                [  30,  70, 220];  // Deep blue — cold La Niña
+    };
 
-    const LINK_DIST = 130;
+    const count = Math.min(Math.floor((canvas.width * canvas.height) / 7500), 220);
+
+    const particles = Array.from({ length: count }, () => {
+      const x = Math.random() * canvas.width;
+      const y = Math.random() * canvas.height;
+      // El Niño tongue: warm anomaly in center-east, cool at western edge
+      const xNorm = x / canvas.width;  // 0 = west, 1 = east
+      let temp;
+      if (isLaNina) {
+        temp = -(Math.random() * 0.7 + 0.25);
+      } else if (isElNino) {
+        // Warm "tongue" — warmer toward center-east (the El Niño signature)
+        const tongueHeat = Math.pow(xNorm, 0.6) * 0.8;
+        temp = tongueHeat + (Math.random() * 0.5 - 0.15);
+      } else {
+        // Neutral/warming: broad warm anomaly, some scatter
+        temp = Math.random() * 0.7 - 0.05;
+      }
+      return {
+        x, y,
+        r: Math.random() * 2.8 + 1.1,
+        // El Niño: westward drift (trade wind weakening, warm current flows east→west)
+        vx: isElNino
+          ? -(Math.random() * 0.32 + 0.06)
+          : isLaNina
+            ? (Math.random() * 0.28 + 0.04)   // La Niña: eastward trade winds
+            : (Math.random() - 0.5) * 0.35,
+        vy: (Math.random() - 0.5) * 0.22,
+        temp: Math.max(-1, Math.min(1, temp)),
+        opacity: Math.random() * 0.45 + 0.28,
+        wobble: Math.random() * Math.PI * 2,
+      };
+    });
 
     let frame = 0;
     const draw = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       frame++;
+
+      // Paint the warm-anomaly glow zone — the El Niño "tongue"
+      const tongueX = canvas.width * 0.62;
+      const tongueY = canvas.height * 0.52;
+      if (!isLaNina) {
+        const tongue = ctx.createRadialGradient(tongueX, tongueY, 0, tongueX, tongueY, canvas.width * 0.52);
+        tongue.addColorStop(0,   'rgba(200, 50,  0, 0.09)');
+        tongue.addColorStop(0.45,'rgba(255, 90, 10, 0.04)');
+        tongue.addColorStop(1,   'transparent');
+        ctx.fillStyle = tongue;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      // Cool western edge — contrast zone (normal Pacific or La Niña upwelling)
+      const coldEdge = ctx.createRadialGradient(0, canvas.height * 0.55, 0, 0, canvas.height * 0.55, canvas.width * 0.35);
+      coldEdge.addColorStop(0,   isLaNina ? 'rgba(0, 60, 200, 0.11)' : 'rgba(0, 30, 120, 0.07)');
+      coldEdge.addColorStop(1,   'transparent');
+      ctx.fillStyle = coldEdge;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
       const mx = mouseRef.current.x;
       const my = mouseRef.current.y;
 
-      // Draw connection lines between nearby particles
-      for (let i = 0; i < particles.length; i++) {
-        for (let j = i + 1; j < particles.length; j++) {
-          const dx = particles[i].x - particles[j].x;
-          const dy = particles[i].y - particles[j].y;
-          const d = Math.sqrt(dx * dx + dy * dy);
-          if (d < LINK_DIST) {
-            const alpha = (1 - d / LINK_DIST) * 0.18;
-            ctx.beginPath();
-            ctx.moveTo(particles[i].x, particles[i].y);
-            ctx.lineTo(particles[j].x, particles[j].y);
-            ctx.strokeStyle = `rgba(${base[0]},${base[1]},${base[2]},${alpha})`;
-            ctx.lineWidth = 0.8;
-            ctx.stroke();
-          }
-        }
-      }
-
       for (const p of particles) {
-        const wobble = Math.sin(frame * 0.009 + p.phase) * 0.3;
+        const w = Math.sin(frame * 0.008 + p.wobble) * 0.26;
         const dx = p.x - mx, dy = p.y - my;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        let pushX = 0, pushY = 0;
-        if (dist < 120 && dist > 0) {
-          const f = ((120 - dist) / 120) * 1.2;
-          pushX = (dx / dist) * f;
-          pushY = (dy / dist) * f;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        let px = 0, py = 0;
+        if (d < 115 && d > 0) {
+          const f = ((115 - d) / 115) * 1.1;
+          px = (dx / d) * f;
+          py = (dy / d) * f;
         }
-        p.x += p.vx + wobble + pushX;
-        p.y += p.vy + pushY;
-        if (p.y < -8)               { p.y = canvas.height + 8; p.x = Math.random() * canvas.width; }
-        if (p.x < -8)                p.x = canvas.width + 8;
-        if (p.x > canvas.width + 8)  p.x = -8;
+        p.x += p.vx + w + px;
+        p.y += p.vy + py;
 
-        // Glow halo
+        if (p.y < -10) { p.y = canvas.height + 10; p.x = Math.random() * canvas.width; }
+        if (p.y > canvas.height + 10) { p.y = -10; p.x = Math.random() * canvas.width; }
+        if (p.x < -10) p.x = canvas.width + 10;
+        if (p.x > canvas.width + 10) p.x = -10;
+
+        const [r, g, b] = sstColor(p.temp);
+
+        // Halo glow
+        const halo = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 4.2);
+        halo.addColorStop(0, `rgba(${r},${g},${b},0.22)`);
+        halo.addColorStop(1, 'transparent');
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r * 3.5, 0, Math.PI * 2);
-        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 3.5);
-        grad.addColorStop(0, glowColor);
-        grad.addColorStop(1, 'transparent');
-        ctx.fillStyle = grad;
+        ctx.arc(p.x, p.y, p.r * 4.2, 0, Math.PI * 2);
+        ctx.fillStyle = halo;
         ctx.fill();
 
         // Core dot
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${base[0]},${base[1]},${base[2]},${p.opacity})`;
+        ctx.fillStyle = `rgba(${r},${g},${b},${p.opacity})`;
         ctx.fill();
       }
       animId = requestAnimationFrame(draw);
@@ -498,6 +532,8 @@ function App() {
 
       {/* ── Header ── */}
       <header className="header">
+        {/* SST anomaly temperature scale — the El Niño signature bar */}
+        <div className="sst-scale-bar" />
         <div className="header-content">
           <div className="logo">
             <span className="logo-icon">🌊</span>
