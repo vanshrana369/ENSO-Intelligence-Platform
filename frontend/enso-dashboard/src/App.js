@@ -651,7 +651,7 @@ function App() {
                   const barColor = correlation > 0 ? '#10b981' : '#ef4444';
                   return (
                     <div key={commodity} className="sensitivity-row">
-                      <span className="sensitivity-label">{commodity.replace('_', ' ').toUpperCase()}</span>
+                      <span className="sensitivity-label">{commodity.replace(/_/g, ' ').toUpperCase()}</span>
                       <div className="sensitivity-bar-wrapper">
                         <div className="sensitivity-bar" style={{ width: `${absCorr * 100}%`, background: barColor, height: '6px', borderRadius: '3px' }}/>
                       </div>
