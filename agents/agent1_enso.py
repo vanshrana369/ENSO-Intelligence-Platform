@@ -56,25 +56,52 @@ def run_agent1(state):
         logger.warning(f"Commodity price refresh failed (using existing DB data): {e}")
 
     rows = get_latest_enso_data()
-    latest_mei = rows[0][1]
+    latest_mei = float(rows[0][1])
     latest_date = rows[0][0]
     phase = determine_enso_phase(latest_mei)
 
-    data_summary = "\n".join([
-        f"{row[0]}: {row[1]}" for row in rows
-    ])
+    # Override phase/MEI with live Niño3.4 SST — the most direct ENSO measurement.
+    # MEI is a lagged multivariate composite; during transitions it can show the
+    # OPPOSITE phase from the actual Pacific SST.
+    nino34_note = ""
+    try:
+        from fetch_nino34 import fetch_nino34_weekly
+        nino34 = fetch_nino34_weekly()
+        if nino34:
+            latest_mei  = nino34['nino34_anom']
+            latest_date = nino34['date']
+            phase       = nino34['phase']
+            nino34_note = (
+                f"\nNOTE: Live Niño3.4 SST anomaly ({nino34['date']}): {latest_mei:+.2f}°C"
+                f" — this is the most current ENSO reading and supersedes older MEI values."
+            )
+            logger.info(f"Agent 1: live Niño3.4 override → {phase}  {latest_mei:+.2f}")
+    except Exception as e:
+        logger.warning(f"Niño3.4 override skipped: {e}")
 
-    prompt = f"""
-    You are a climate analyst. Based on this ENSO MEI index data:
-    
-    {data_summary}
-    
-    Current phase: {phase}
-    Latest MEI value: {latest_mei}
-    
-    Write a 3-sentence professional summary of current ENSO conditions 
-    and what trend you observe. Be specific about the numbers.
-    """
+    # Build historical context (oldest → newest from DB, plus live reading at top)
+    historical_rows = "\n".join([f"  {row[0]}: MEI {row[1]:+.2f}" for row in reversed(rows)])
+    data_summary = (
+        f"Historical MEI (last 6 months, from DB):\n{historical_rows}"
+        f"\n\nCurrent live reading: Niño3.4 SST anomaly = {latest_mei:+.2f}°C  →  Phase: {phase}"
+    )
+
+    prompt = f"""You are a senior climate analyst.
+
+ENSO index data:
+{data_summary}
+{nino34_note}
+
+Current phase: {phase}
+Current ENSO index value: {latest_mei:+.2f}
+
+Write a 3-sentence professional summary that:
+1. States the current phase and the most recent index value precisely.
+2. Describes the recent trend (what the historical data shows vs. where we are now).
+3. Gives the near-term outlook based on the current trajectory.
+
+Be specific about numbers and the phase transition if one is occurring.
+"""
 
     response = llm.invoke(prompt)
     summary = response.content
@@ -83,7 +110,7 @@ def run_agent1(state):
 
     print("\n=== AGENT 1: ENSO MONITOR ===")
     print(f"Phase: {phase}")
-    print(f"Latest MEI: {latest_mei}")
+    print(f"Latest MEI/Niño3.4: {latest_mei}")
     print(f"\nSummary:\n{summary}")
 
     return {
