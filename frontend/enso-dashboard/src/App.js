@@ -48,6 +48,87 @@ function useCountUp(target, duration = 1100) {
   return val;
 }
 
+// ── Ocean particle background ─────────────────────────────────────────────────
+function OceanBackground({ phase }) {
+  const canvasRef = useRef(null);
+  const mouseRef = useRef({ x: -9999, y: -9999 });
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let animId;
+
+    const isLaNina = phase?.toLowerCase().includes('nina');
+    const isElNino = phase?.toLowerCase().includes('nino') || phase?.toLowerCase().includes('niño');
+    // La Niña → cool ocean blue, El Niño → warm amber, Neutral → sea green
+    const base = isLaNina ? [30, 160, 255] : isElNino ? [255, 110, 30] : [0, 210, 180];
+
+    const resize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    resize();
+
+    const count = Math.min(Math.floor((canvas.width * canvas.height) / 14000), 140);
+    const particles = Array.from({ length: count }, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      r: Math.random() * 2.2 + 0.4,
+      vx: (Math.random() - 0.5) * 0.4,
+      vy: -(Math.random() * 0.35 + 0.05),
+      opacity: Math.random() * 0.35 + 0.05,
+      phase: Math.random() * Math.PI * 2,
+    }));
+
+    let frame = 0;
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      frame++;
+      const mx = mouseRef.current.x;
+      const my = mouseRef.current.y;
+
+      for (const p of particles) {
+        const wobble = Math.sin(frame * 0.008 + p.phase) * 0.25;
+        const dx = p.x - mx, dy = p.y - my;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        let pushX = 0, pushY = 0;
+        if (dist < 100 && dist > 0) {
+          const f = ((100 - dist) / 100) * 0.9;
+          pushX = (dx / dist) * f;
+          pushY = (dy / dist) * f;
+        }
+        p.x += p.vx + wobble + pushX;
+        p.y += p.vy + pushY;
+        if (p.y < -6)               { p.y = canvas.height + 6; p.x = Math.random() * canvas.width; }
+        if (p.x < -6)                p.x = canvas.width + 6;
+        if (p.x > canvas.width + 6)  p.x = -6;
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${base[0]},${base[1]},${base[2]},${p.opacity})`;
+        ctx.fill();
+      }
+      animId = requestAnimationFrame(draw);
+    };
+    draw();
+
+    const onMouse = (e) => { mouseRef.current = { x: e.clientX, y: e.clientY }; };
+    const onLeave = ()  => { mouseRef.current = { x: -9999, y: -9999 }; };
+    window.addEventListener('resize', resize);
+    window.addEventListener('mousemove', onMouse);
+    window.addEventListener('mouseleave', onLeave);
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('mousemove', onMouse);
+      window.removeEventListener('mouseleave', onLeave);
+    };
+  }, [phase]);
+
+  return <canvas ref={canvasRef} style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none' }} />;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getTimeAgo(date) {
@@ -282,6 +363,7 @@ function App() {
   if (loading) {
     return (
       <div className="loading">
+        <OceanBackground phase="neutral" />
         <div className="loading-inner">
           <div className="spinner"></div>
           <h2>Loading ENSO Intelligence Platform...</h2>
@@ -371,6 +453,17 @@ function App() {
   // ── Main dashboard ───────────────────────────────────────────────────────────
   return (
     <div className="app">
+      <OceanBackground phase={phase} />
+
+      {/* ── Ocean wave bottom strip ── */}
+      <div className="ocean-wave-wrap">
+        <svg viewBox="0 0 1200 90" preserveAspectRatio="none">
+          <path d="M0,45 C200,80 400,10 600,45 C800,80 1000,10 1200,45 L1200,90 L0,90 Z" fill="rgba(0,200,255,0.12)"/>
+        </svg>
+        <svg viewBox="0 0 1200 90" preserveAspectRatio="none">
+          <path d="M0,55 C300,15 500,75 750,40 C950,10 1100,65 1200,50 L1200,90 L0,90 Z" fill="rgba(0,180,235,0.08)"/>
+        </svg>
+      </div>
 
       {/* ── Header ── */}
       <header className="header">
