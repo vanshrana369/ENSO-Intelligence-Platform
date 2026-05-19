@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from sklearn.ensemble import GradientBoostingRegressor
 import warnings
-import pickle
 
 warnings.filterwarnings('ignore')
 
@@ -19,8 +18,11 @@ _model_cache = {
 class ENSOForecaster:
     """Predicts MEI values 6 months ahead using ML."""
 
-    def __init__(self, data_path='data/raw/mei_index.csv'):
-        self.data_path = Path(data_path)
+    # Absolute path so this works regardless of CWD (local dev vs Render)
+    _DEFAULT_DATA_PATH = Path(__file__).resolve().parent.parent / 'data' / 'raw' / 'mei_index.csv'
+
+    def __init__(self, data_path=None):
+        self.data_path = Path(data_path) if data_path else self._DEFAULT_DATA_PATH
         self.model_mean = None
         self.model_lower = None
         self.model_upper = None
@@ -169,10 +171,11 @@ class ENSOForecaster:
 
             # Update features for next iteration (rolling forecast)
             mei_prev_1 = mei_pred
-            mei_prev_2 = current_row[0][0]  # lag1 becomes lag2
-            mei_prev_3 = current_row[0][1]  # lag2 becomes lag3
-            rolling_mean = (mei_pred + mei_prev_1 + mei_prev_2) / 3
-            rolling_std = np.std([mei_pred, mei_prev_1, mei_prev_2])
+            mei_prev_2 = current_row[0][0]  # old lag1 → new lag2
+            mei_prev_3 = current_row[0][1]  # old lag2 → new lag3
+            # Average the three most recent predictions (not mei_pred twice)
+            rolling_mean = (mei_pred + mei_prev_2 + mei_prev_3) / 3
+            rolling_std = np.std([mei_pred, mei_prev_2, mei_prev_3])
 
             current_row = np.array([[
                 mei_prev_1,           # lag1
@@ -221,10 +224,13 @@ class ENSOForecaster:
                 # Use standard classification
                 predicted_phase = self._classify_phase(predicted_mei)
 
-            # Calculate confidence (based on upper-lower spread and trend strength)
+            # Calculate confidence (blend spread-based and trend-based confidence)
             avg_spread = np.mean([abs(f['upper'] - f['lower']) for f in forecast_data])
-            trend_confidence = min(95, 60 + abs(forecast_trend) * 50)  # Boost confidence if strong trend
-            confidence = max(50, min(95, 100 - (avg_spread * 12)))
+            spread_confidence = max(50, min(95, 100 - (avg_spread * 12)))
+            trend_confidence = min(95, 60 + abs(forecast_trend) * 50)
+            # Weight: spread 60%, trend strength 40%
+            confidence = 0.6 * spread_confidence + 0.4 * trend_confidence
+            confidence = max(50, min(95, confidence))
 
         else:
             predicted_phase = 'Unknown'

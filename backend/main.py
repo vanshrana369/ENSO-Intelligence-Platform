@@ -259,7 +259,7 @@ def root():
         "name": "ENSO Intelligence Platform",
         "version": "1.0.0",
         "status": "running",
-        "endpoints": ["/status", "/latest-report", "/latest-report/download", "/run-now", "/forecast", "/analytics"]
+        "endpoints": ["/status", "/latest-report", "/latest-report/download", "/run-now", "/forecast", "/analytics", "/mei-history"]
     }
 
 
@@ -305,7 +305,8 @@ def get_status():
         "outlook": outlook,
         "risk_score": report.get("risk_score", 0),
         "report_date": report.get("report_date", ""),
-        "last_updated": datetime.now().isoformat(),
+        # Use actual report_date as last_updated so UI doesn't show "just now" for old reports
+        "last_updated": report.get("report_date", datetime.now().strftime("%Y-%m-%d")),
     }
 
 
@@ -423,6 +424,58 @@ def trigger_pipeline(background_tasks: BackgroundTasks):
         "message": "Pipeline started in background. Check /status in ~3 minutes.",
         "timestamp": datetime.now().isoformat(),
     }
+
+
+@app.get("/mei-history")
+def get_mei_history():
+    """
+    Returns last 24 months of MEI index values formatted for the chart.
+    Falls back to the CSV file if the DB is unavailable.
+    """
+    try:
+        engine = create_engine(DB_URL)
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT date, mei_value
+                FROM enso_data
+                WHERE mei_value BETWEEN -3 AND 3
+                ORDER BY date DESC
+                LIMIT 24
+            """)).fetchall()
+
+        if rows:
+            # Reverse so oldest → newest for the chart
+            history = [
+                {
+                    "month": pd.to_datetime(str(row[0])).strftime("%b %y"),
+                    "mei": round(float(row[1]), 2),
+                    "is_forecast": False
+                }
+                for row in reversed(rows)
+            ]
+            return JSONResponse(content=history)
+    except Exception as e:
+        logger.warning(f"/mei-history DB query failed, falling back to CSV: {e}")
+
+    # Fallback: read from CSV file directly
+    try:
+        csv_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'raw', 'mei_index.csv')
+        df = pd.read_csv(csv_path)
+        df['date'] = pd.to_datetime(df['date'])
+        df = df[(df['mei_value'] >= -3) & (df['mei_value'] <= 3)]
+        df = df.sort_values('date').tail(24)
+        history = [
+            {
+                "month": row['date'].strftime("%b %y"),
+                "mei": round(float(row['mei_value']), 2),
+                "is_forecast": False
+            }
+            for _, row in df.iterrows()
+        ]
+        return JSONResponse(content=history)
+    except Exception as e:
+        logger.error(f"/mei-history CSV fallback also failed: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @app.get("/forecast")

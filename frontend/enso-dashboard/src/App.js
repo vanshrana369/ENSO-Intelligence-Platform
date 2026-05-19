@@ -465,7 +465,7 @@ function App() {
             >
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(15, 31, 53, 0.6)" verticalPoints={[0]}/>
               <XAxis dataKey="month" stroke="#64748b" fontSize={12}/>
-              <YAxis stroke="#64748b" fontSize={12} domain={[-1.5, 0.5]} width={40}/>
+              <YAxis stroke="#64748b" fontSize={12} domain={['auto', 'auto']} width={40}/>
               <ReferenceLine y={0.5} stroke="#ef4444" strokeDasharray="5 5" strokeWidth={2} name="El Niño (>0.5)"/>
               <ReferenceLine y={-0.5} stroke="#3b82f6" strokeDasharray="5 5" strokeWidth={2} name="La Niña (<-0.5)"/>
               <Legend verticalAlign="top" height={36} iconType="line" wrapperStyle={{ paddingBottom: '10px' }}/>

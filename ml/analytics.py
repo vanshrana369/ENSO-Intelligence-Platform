@@ -203,10 +203,6 @@ def commodity_sensitivity(mei_data, commodity_path=None):
         latest_commodity = max(commodity_files)
         prices_df = pd.read_csv(latest_commodity)
 
-        # Normalize commodity data to match MEI dates
-        mei_dates = pd.to_datetime(mei_data['date'])
-        price_dates = pd.to_datetime(prices_df['date'])
-
         # Get commodities
         for commodity in ['wheat', 'crude_oil', 'soybean']:
             commodity_prices = prices_df[prices_df['commodity'].str.lower() == commodity.lower()]['price'].values
