@@ -36,13 +36,18 @@ def fetch_nino34_weekly() -> dict | None:
         if not line:
             continue
         tokens = line.split()
-        # Lines look like: "13-MAY-2026  28.1  0.5  28.3  0.7  28.4  0.9  29.1  0.3"
-        # Skip header / annotation lines
+        # Lines look like: "03JAN1990  28.1  0.5  28.3  0.7  28.4  0.9  29.1  0.3"
+        # (NOAA uses DDMMMYYYY — no hyphens.  Skip header / annotation lines.)
         if len(tokens) < 8:
             continue
-        try:
-            date = pd.to_datetime(tokens[0], format='%d-%b-%Y')
-        except ValueError:
+        date = None
+        for fmt in ('%d%b%Y', '%d-%b-%Y'):
+            try:
+                date = pd.to_datetime(tokens[0].upper(), format=fmt.upper())
+                break
+            except ValueError:
+                continue
+        if date is None:
             continue
         try:
             nino34_anom = float(tokens[6])  # Niño3.4 SST anomaly column
