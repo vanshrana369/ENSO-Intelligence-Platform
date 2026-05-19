@@ -1,73 +1,65 @@
 """
-Fetch weekly Niño3.4 SST anomaly from NOAA CPC.
+Fetch monthly Niño3.4 SST anomaly from NOAA CPC sstoi.indices.
 
-This updates every week — much faster than MEI v2 (bimonthly, ~2mo lag).
+Updates every ~month — more current than MEI v2 (bimonthly, ~2-month lag).
 Used as the live current-phase indicator when MEI is lagged.
 
-Source: https://www.cpc.ncep.noaa.gov/data/indices/wksst8110.for
-Format: date  nino12_sst  nino12_anom  nino3_sst  nino3_anom  nino34_sst  nino34_anom  nino4_sst  nino4_anom
+Source: https://www.cpc.ncep.noaa.gov/data/indices/sstoi.indices
+Format: YR MON  NINO1+2 ANOM  NINO3 ANOM  NINO4 ANOM  NINO3.4 ANOM
+         0   1    2      3      4     5      6     7      8       9
 """
 import requests
-import pandas as pd
 import logging
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-NINO34_URL = "https://www.cpc.ncep.noaa.gov/data/indices/wksst8110.for"
+NINO34_URL = "https://www.cpc.ncep.noaa.gov/data/indices/sstoi.indices"
 
 
 def fetch_nino34_weekly() -> dict | None:
     """
-    Returns the most recent weekly Niño3.4 SST anomaly as a dict:
-      { 'date': '2026-05-13', 'nino34_anom': 0.9, 'phase': 'El Niño' }
+    Returns the most recent monthly Niño3.4 SST anomaly as a dict:
+      { 'date': '2026-04-01', 'nino34_anom': 0.47, 'phase': 'Neutral' }
     Returns None on failure.
     """
     try:
-        resp = requests.get(NINO34_URL, timeout=15)
+        resp = requests.get(NINO34_URL, timeout=20)
         resp.raise_for_status()
     except Exception as e:
         logger.warning(f"Niño3.4 fetch failed: {e}")
         return None
 
-    rows = []
-    for line in resp.text.strip().split('\n'):
-        line = line.strip()
-        if not line:
-            continue
+    latest_yr   = None
+    latest_mon  = None
+    latest_anom = None
+
+    for line in resp.text.splitlines():
         tokens = line.split()
-        # Lines look like: "03JAN1990  28.1  0.5  28.3  0.7  28.4  0.9  29.1  0.3"
-        # (NOAA uses DDMMMYYYY — no hyphens.  Skip header / annotation lines.)
-        if len(tokens) < 8:
-            continue
-        date = None
-        for fmt in ('%d%b%Y', '%d-%b-%Y'):
-            try:
-                date = pd.to_datetime(tokens[0].upper(), format=fmt.upper())
-                break
-            except ValueError:
-                continue
-        if date is None:
+        if len(tokens) < 10:
             continue
         try:
-            nino34_anom = float(tokens[6])  # Niño3.4 SST anomaly column
-        except (IndexError, ValueError):
+            yr   = int(tokens[0])
+            mon  = int(tokens[1])
+            anom = float(tokens[9])   # NINO3.4 SST anomaly
+        except (ValueError, IndexError):
             continue
-        rows.append({'date': date, 'nino34_anom': nino34_anom})
+        if latest_yr is None or (yr, mon) > (latest_yr, latest_mon):
+            latest_yr   = yr
+            latest_mon  = mon
+            latest_anom = anom
 
-    if not rows:
+    if latest_yr is None:
         logger.warning("Niño3.4 parse returned no rows")
         return None
 
-    df = pd.DataFrame(rows).sort_values('date')
-    latest = df.iloc[-1]
-    anom = float(latest['nino34_anom'])
-    date_str = latest['date'].strftime('%Y-%m-%d')
+    date_str = f"{latest_yr}-{latest_mon:02d}-01"
+    phase = ('El Niño' if latest_anom >= 0.5
+             else 'La Niña' if latest_anom <= -0.5
+             else 'Neutral')
 
-    phase = 'El Niño' if anom >= 0.5 else 'La Niña' if anom <= -0.5 else 'Neutral'
-
-    logger.info(f"Niño3.4 weekly: {date_str}  anomaly={anom:+.2f}  phase={phase}")
-    return {'date': date_str, 'nino34_anom': anom, 'phase': phase}
+    logger.info(f"Niño3.4 (sstoi): {date_str}  anomaly={latest_anom:+.2f}  phase={phase}")
+    return {'date': date_str, 'nino34_anom': round(float(latest_anom), 2), 'phase': phase}
 
 
 if __name__ == '__main__':

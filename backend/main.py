@@ -61,17 +61,16 @@ def _refresh_mei_if_stale():
         logger.warning(f"MEI auto-refresh failed: {e}")
 
 
-_NINO34_URL = "https://www.cpc.ncep.noaa.gov/data/indices/wksst8110.for"
+# NOAA CPC monthly SST index — updated every ~month, clean space-delimited format.
+# Columns: YR MON  NINO1+2 ANOM  NINO3 ANOM  NINO4 ANOM  NINO3.4 ANOM
+# tokens:   0   1    2      3      4     5      6     7      8       9
+_NINO34_URL = "https://www.cpc.ncep.noaa.gov/data/indices/sstoi.indices"
 
 
 def _get_live_nino34() -> dict | None:
     """
-    Fetch the latest weekly Niño3.4 SST anomaly directly from NOAA CPC.
+    Fetch the most recent monthly Niño3.4 SST anomaly from NOAA CPC.
     Cached for 6 hours.  Returns { date, nino34_anom, phase } or None.
-
-    File format (fixed-width, space-separated after split):
-      tokens[0]  = date  e.g. '03JAN1990'  (format %d%b%Y, NO hyphens)
-      tokens[6]  = Niño3.4 SST anomaly
     """
     global _last_nino34_refresh, _cached_nino34
     if _cached_nino34 and _last_nino34_refresh and \
@@ -81,42 +80,38 @@ def _get_live_nino34() -> dict | None:
         resp = requests.get(_NINO34_URL, timeout=20)
         resp.raise_for_status()
 
-        latest_dt   = None
+        latest_yr   = None
+        latest_mon  = None
         latest_anom = None
         for line in resp.text.splitlines():
             tokens = line.split()
-            if len(tokens) < 8:
+            if len(tokens) < 10:
                 continue
-            # Date in NOAA file: 03JAN1990 — no hyphens
-            for fmt in ('%d%b%Y', '%d-%b-%Y'):
-                try:
-                    dt = datetime.strptime(tokens[0].upper(), fmt.upper())
-                    break
-                except ValueError:
-                    continue
-            else:
-                continue  # unparseable date — skip (header / blank lines)
             try:
-                anom = float(tokens[6])
-            except (IndexError, ValueError):
+                yr   = int(tokens[0])
+                mon  = int(tokens[1])
+                anom = float(tokens[9])   # NINO3.4 SST anomaly column
+            except (ValueError, IndexError):
                 continue
-            if latest_dt is None or dt > latest_dt:
-                latest_dt   = dt
+            if latest_yr is None or (yr, mon) > (latest_yr, latest_mon):
+                latest_yr   = yr
+                latest_mon  = mon
                 latest_anom = anom
 
-        if latest_dt is None:
-            logger.warning("Niño3.4: parsed 0 rows from NOAA file")
+        if latest_yr is None:
+            logger.warning("Niño3.4: parsed 0 rows from sstoi.indices")
             return _cached_nino34
 
+        date_str = f"{latest_yr}-{latest_mon:02d}-01"
         phase = ('El Niño' if latest_anom >= 0.5
                  else 'La Niña' if latest_anom <= -0.5
                  else 'Neutral')
         result = {
-            'date':        latest_dt.strftime('%Y-%m-%d'),
+            'date':        date_str,
             'nino34_anom': round(float(latest_anom), 2),
             'phase':       phase,
         }
-        _cached_nino34    = result
+        _cached_nino34       = result
         _last_nino34_refresh = datetime.utcnow()
         logger.info(f"Niño3.4 live: {result['date']}  {result['nino34_anom']:+.2f}  {result['phase']}")
         return result
