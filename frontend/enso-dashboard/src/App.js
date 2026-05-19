@@ -61,8 +61,8 @@ function OceanBackground({ phase }) {
 
     const isLaNina = phase?.toLowerCase().includes('nina');
     const isElNino = phase?.toLowerCase().includes('nino') || phase?.toLowerCase().includes('niño');
-    // La Niña → vivid cyan, El Niño → warm coral, Neutral → emerald teal
-    const base = isLaNina ? [0, 200, 255] : isElNino ? [255, 120, 50] : [0, 230, 160];
+    // La Niña → vivid cyan, El Niño → intense warm coral, Neutral → warm amber-orange
+    const base = isLaNina ? [0, 200, 255] : isElNino ? [255, 100, 30] : [255, 140, 50];
     const glowColor = `rgba(${base[0]},${base[1]},${base[2]},0.18)`;
 
     const resize = () => {
@@ -489,10 +489,10 @@ function App() {
       {/* ── Ocean wave bottom strip ── */}
       <div className="ocean-wave-wrap">
         <svg viewBox="0 0 1200 110" preserveAspectRatio="none">
-          <path d="M0,55 C200,95 400,15 600,55 C800,95 1000,15 1200,55 L1200,110 L0,110 Z" fill="rgba(0,200,255,0.30)"/>
+          <path d="M0,55 C200,95 400,15 600,55 C800,95 1000,15 1200,55 L1200,110 L0,110 Z" fill="rgba(255,100,40,0.28)"/>
         </svg>
         <svg viewBox="0 0 1200 110" preserveAspectRatio="none">
-          <path d="M0,65 C300,20 500,90 750,50 C950,15 1100,75 1200,60 L1200,110 L0,110 Z" fill="rgba(0,180,235,0.20)"/>
+          <path d="M0,65 C300,20 500,90 750,50 C950,15 1100,75 1200,60 L1200,110 L0,110 Z" fill="rgba(220,70,10,0.18)"/>
         </svg>
       </div>
 
@@ -568,7 +568,7 @@ function App() {
             {status?.mei_value != null ? (animatedMei >= 0 ? '+' : '') + animatedMei.toFixed(2) : '-'}
           </span>
           <span className="stat-sub">Multivariate ENSO Index</span>
-          <MiniSparkline data={chartData.slice(-8)} color="#00d4ff" />
+          <MiniSparkline data={chartData.slice(-8)} color="#ff6b35" />
         </div>
 
         <div className="stat-card">
@@ -640,18 +640,18 @@ function App() {
             >
               <defs>
                 <linearGradient id="meiGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#00d4ff" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#00d4ff" stopOpacity={0.02}/>
+                  <stop offset="5%"  stopColor="#ff6b35" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#ff6b35" stopOpacity={0.02}/>
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="1 6" stroke="rgba(0,212,255,0.06)" vertical={false}/>
-              <XAxis dataKey="month" stroke="#1e3a5f" fontSize={10} tick={{ fill: '#334155', fontFamily: 'Space Mono, monospace' }} axisLine={false} tickLine={false}/>
-              <YAxis stroke="#1e3a5f" fontSize={10} domain={['auto', 'auto']} width={36} tick={{ fill: '#334155', fontFamily: 'Space Mono, monospace' }} axisLine={false} tickLine={false}/>
-              <ReferenceLine y={0.5}  stroke="rgba(255,68,102,0.5)"  strokeDasharray="4 4" strokeWidth={1} label={{ value: 'EL NIÑO', fill: 'rgba(255,68,102,0.5)', fontSize: 8, fontFamily: 'Space Mono' }}/>
+              <CartesianGrid strokeDasharray="1 6" stroke="rgba(255,107,53,0.07)" vertical={false}/>
+              <XAxis dataKey="month" stroke="#5c2e18" fontSize={10} tick={{ fill: '#7a4030', fontFamily: 'Space Mono, monospace' }} axisLine={false} tickLine={false}/>
+              <YAxis stroke="#5c2e18" fontSize={10} domain={['auto', 'auto']} width={36} tick={{ fill: '#7a4030', fontFamily: 'Space Mono, monospace' }} axisLine={false} tickLine={false}/>
+              <ReferenceLine y={0.5}  stroke="rgba(255,68,102,0.6)"  strokeDasharray="4 4" strokeWidth={1} label={{ value: 'EL NIÑO', fill: 'rgba(255,68,102,0.6)', fontSize: 8, fontFamily: 'Space Mono' }}/>
               <ReferenceLine y={-0.5} stroke="rgba(0,212,255,0.5)"  strokeDasharray="4 4" strokeWidth={1} label={{ value: 'LA NIÑA', fill: 'rgba(0,212,255,0.5)', fontSize: 8, fontFamily: 'Space Mono' }}/>
               <Tooltip
-                contentStyle={{ background: 'rgba(6,9,18,0.97)', border: '1px solid rgba(0,212,255,0.2)', borderRadius: '6px', color: '#e2f4ff', padding: '10px 14px', fontSize: '0.78rem', fontFamily: 'Space Mono, monospace' }}
-                cursor={{ stroke: 'rgba(0,212,255,0.15)', strokeWidth: 1 }}
+                contentStyle={{ background: 'rgba(16,6,3,0.97)', border: '1px solid rgba(255,107,53,0.22)', borderRadius: '6px', color: '#fff3ec', padding: '10px 14px', fontSize: '0.78rem', fontFamily: 'Space Mono, monospace' }}
+                cursor={{ stroke: 'rgba(255,107,53,0.18)', strokeWidth: 1 }}
                 formatter={(value, name) => {
                   if (name === 'lower' || name === 'upper') return ['', ''];
                   if (typeof value === 'number') return [value.toFixed(2), 'MEI'];
@@ -660,14 +660,14 @@ function App() {
               />
               <Area type="monotone" dataKey="mei" fill="url(#meiGrad)" stroke="none" isAnimationActive={true} animationDuration={900}/>
               <Line
-                type="monotone" dataKey="mei" stroke="#00d4ff" strokeWidth={2}
+                type="monotone" dataKey="mei" stroke="#ff6b35" strokeWidth={2}
                 isAnimationActive={true} animationDuration={900}
                 dot={(props) => {
                   const { cx, cy, payload } = props;
-                  if (payload.is_forecast) return <circle key={cx} cx={cx} cy={cy} r={2.5} fill="#334155" stroke="#1e3a5f" strokeWidth={1}/>;
-                  return <circle key={cx} cx={cx} cy={cy} r={3.5} fill="#00d4ff" stroke="rgba(6,9,18,0.9)" strokeWidth={2}/>;
+                  if (payload.is_forecast) return <circle key={cx} cx={cx} cy={cy} r={2.5} fill="#5c2e18" stroke="#3a1a08" strokeWidth={1}/>;
+                  return <circle key={cx} cx={cx} cy={cy} r={3.5} fill="#ff6b35" stroke="rgba(16,6,3,0.9)" strokeWidth={2}/>;
                 }}
-                activeDot={{ r: 5, strokeWidth: 2, stroke: '#ffffff', fill: '#00d4ff' }}
+                activeDot={{ r: 5, strokeWidth: 2, stroke: '#ffffff', fill: '#ff6b35' }}
               />
             </ComposedChart>
           </ResponsiveContainer>
@@ -794,11 +794,11 @@ function App() {
                   { name: 'La Niña', value: analytics.phase_probabilities.la_nina },
                   { name: 'Neutral', value: analytics.phase_probabilities.neutral }
                 ]} margin={{ top: 5, right: 30, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(15,31,53,0.6)"/>
-                  <XAxis dataKey="name" stroke="#64748b" fontSize={11}/>
-                  <YAxis stroke="#64748b" fontSize={11} domain={[0, 100]}/>
-                  <Tooltip contentStyle={{ background: 'rgba(13,21,32,0.95)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#e2e8f0' }} formatter={(v) => `${v}%`}/>
-                  <Bar dataKey="value" fill="#00d4ff" radius={[4, 4, 0, 0]}/>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(53,15,5,0.6)"/>
+                  <XAxis dataKey="name" stroke="#7a4030" fontSize={11}/>
+                  <YAxis stroke="#7a4030" fontSize={11} domain={[0, 100]}/>
+                  <Tooltip contentStyle={{ background: 'rgba(16,6,3,0.95)', border: '1px solid rgba(255,107,53,0.3)', borderRadius: '8px', color: '#fff3ec' }} formatter={(v) => `${v}%`}/>
+                  <Bar dataKey="value" fill="#ff6b35" radius={[4, 4, 0, 0]}/>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -899,10 +899,10 @@ function App() {
                         data={analytics.seasonal[key].slice(-12).map((val, idx) => ({ idx, value: val }))}
                         margin={{ top: 5, right: 10, left: -25, bottom: 0 }}
                       >
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(15,31,53,0.6)"/>
-                        <XAxis dataKey="idx" stroke="#64748b" fontSize={10}/>
-                        <YAxis stroke="#64748b" fontSize={10}/>
-                        <Tooltip contentStyle={{ background: 'rgba(13,21,32,0.95)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem' }}/>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(53,15,5,0.6)"/>
+                        <XAxis dataKey="idx" stroke="#7a4030" fontSize={10}/>
+                        <YAxis stroke="#7a4030" fontSize={10}/>
+                        <Tooltip contentStyle={{ background: 'rgba(16,6,3,0.95)', border: '1px solid rgba(255,107,53,0.28)', borderRadius: '4px', color: '#fff3ec', fontSize: '0.75rem' }}/>
                         <Line type="monotone" dataKey="value" stroke={color} isAnimationActive={false} strokeWidth={2} dot={false}/>
                       </LineChart>
                     </ResponsiveContainer>
