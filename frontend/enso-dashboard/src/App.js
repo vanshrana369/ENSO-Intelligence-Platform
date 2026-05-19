@@ -275,6 +275,12 @@ function App() {
     }
   };
 
+  // Hooks must be called before any early return (Rules of Hooks)
+  const _rawRiskForHook = status?.risk_score ?? 0;
+  const _riskForHook = _rawRiskForHook > 10 ? Math.round(_rawRiskForHook / 10) : _rawRiskForHook;
+  const animatedMei  = useCountUp(typeof status?.mei_value === 'number' ? status.mei_value : 0);
+  const animatedRisk = useCountUp(_riskForHook);
+
   // ── Loading ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -336,10 +342,6 @@ function App() {
   // Normalize: LLM sometimes returns 0-100 scale instead of 0-10
   const rawRisk = status?.risk_score ?? 0;
   const riskScore = rawRisk > 10 ? Math.round(rawRisk / 10) : rawRisk;
-
-  // Count-up animated values (hooks must be called unconditionally)
-  const animatedMei   = useCountUp(typeof status?.mei_value === 'number' ? status.mei_value : 0);
-  const animatedRisk  = useCountUp(riskScore);
 
   const market = report?.market_risks ?? {};
 
