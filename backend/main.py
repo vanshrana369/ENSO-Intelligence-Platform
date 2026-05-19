@@ -4,7 +4,7 @@ import json
 import glob
 import logging
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, Header, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +25,42 @@ logger = logging.getLogger(__name__)
 
 DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:9213546700@localhost:5432/enso_db")
 _engine = create_engine(DB_URL, pool_pre_ping=True)
+
+# Track last MEI refresh so we don't hammer NOAA on every request
+_last_mei_refresh: datetime | None = None
+MEI_REFRESH_INTERVAL = timedelta(hours=12)
+
+
+def _refresh_mei_if_stale():
+    """Re-fetch MEI data from NOAA if our DB copy is >30 days old or missing recent months."""
+    global _last_mei_refresh
+
+    # Don't re-check more than once per refresh interval within the same dyno session
+    if _last_mei_refresh and (datetime.utcnow() - _last_mei_refresh) < MEI_REFRESH_INTERVAL:
+        return
+
+    try:
+        with _engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT MAX(date) FROM enso_data WHERE mei_value BETWEEN -3 AND 3"
+            )).fetchone()
+        latest_date = pd.to_datetime(row[0]) if row and row[0] else None
+        days_old = (datetime.utcnow() - latest_date).days if latest_date else 9999
+
+        if days_old > 30:
+            logger.info(f"MEI data is {days_old} days old — refreshing from NOAA...")
+            dp_path = os.path.join(os.path.dirname(__file__), '..', 'data_pipeline')
+            if dp_path not in sys.path:
+                sys.path.insert(0, dp_path)
+            from fetch_noaa import fetch_mei_data
+            fetch_mei_data()
+            _last_mei_refresh = datetime.utcnow()
+            logger.info("MEI data refreshed from NOAA successfully")
+        else:
+            _last_mei_refresh = datetime.utcnow()
+    except Exception as e:
+        logger.warning(f"MEI auto-refresh failed (using existing data): {e}")
+
 
 app = FastAPI(
     title="ENSO Intelligence Platform",
@@ -265,10 +301,10 @@ def root():
 def get_status():
     """
     Returns a concise status object.
-
+    Auto-refreshes MEI data from NOAA if stale so the phase/MEI value stays current.
     Priority: in-memory cache → disk → 503 with helpful message.
-    Never raises 404 on Render where the filesystem may be empty.
     """
+    _refresh_mei_if_stale()
     report = _get_report()
 
     if not report:
@@ -295,6 +331,32 @@ def get_status():
     trend = enso.get("trend") or report.get("trend") or ""
     outlook = enso.get("outlook") or report.get("outlook") or ""
 
+    # Override phase/MEI with the freshest DB value so the dashboard
+    # always reflects the latest NOAA data, not a potentially weeks-old report
+    try:
+        with _engine.connect() as conn:
+            row = conn.execute(text("""
+                SELECT date, mei_value FROM enso_data
+                WHERE mei_value BETWEEN -3 AND 3
+                ORDER BY date DESC LIMIT 1
+            """)).fetchone()
+        if row:
+            live_mei = float(row[1])
+            live_date = str(row[0])[:10]
+            live_phase = (
+                "El Niño" if live_mei >= 0.5
+                else "La Niña" if live_mei <= -0.5
+                else "Neutral"
+            )
+            # Only override if the live data is newer than the report
+            report_date_str = report.get("report_date", "1970-01-01")
+            if live_date > report_date_str:
+                mei = live_mei
+                phase = live_phase
+                trend = "warming" if live_mei > (enso.get("mei_value") or 0) else trend
+    except Exception as e:
+        logger.warning(f"Could not read live MEI for status override: {e}")
+
     return {
         "status": "ok",
         "phase": phase,
@@ -303,7 +365,6 @@ def get_status():
         "outlook": outlook,
         "risk_score": report.get("risk_score", 0),
         "report_date": report.get("report_date", ""),
-        # Use actual report_date as last_updated so UI doesn't show "just now" for old reports
         "last_updated": report.get("report_date", datetime.now().strftime("%Y-%m-%d")),
     }
 
@@ -428,8 +489,9 @@ def trigger_pipeline(background_tasks: BackgroundTasks):
 def get_mei_history():
     """
     Returns last 24 months of MEI index values formatted for the chart.
-    Falls back to the CSV file if the DB is unavailable.
+    Auto-refreshes from NOAA if data is stale. Falls back to CSV if DB unavailable.
     """
+    _refresh_mei_if_stale()
     try:
         with _engine.connect() as conn:
             rows = conn.execute(text("""
@@ -479,8 +541,9 @@ def get_mei_history():
 def get_forecast():
     """
     Returns 6-month ENSO phase forecast using ML model (Gradient Boosting).
-    Includes historical MEI data (12 months) and confidence intervals.
+    Auto-refreshes MEI data from NOAA before forecasting if data is stale.
     """
+    _refresh_mei_if_stale()
     try:
         forecast_data = run_forecast()
         return JSONResponse(content=forecast_data)
