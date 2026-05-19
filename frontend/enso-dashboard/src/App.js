@@ -90,7 +90,7 @@ function RiskGauge({ score, max = 10 }) {
   const safeAngle = pct > 0.999 ? 359.4 : 180 + pct * 180;
   const ep = polarPoint(CX, CY, R, safeAngle);
   const np = polarPoint(CX, CY, R * 0.2, safeAngle);
-  const color = score >= 7 ? '#ef4444' : score >= 4 ? '#f59e0b' : '#10b981';
+  const color = score >= 7 ? '#ff4466' : score >= 4 ? '#f59e0b' : '#00e5a0';
   const trackD = `M ${CX - R},${CY} A ${R},${R} 0 0,1 ${CX + R},${CY}`;
   const fillD = pct < 0.001
     ? null
@@ -111,7 +111,7 @@ function RiskGauge({ score, max = 10 }) {
         const a = 180 + (v / 10) * 180;
         const p1 = polarPoint(CX, CY, R + 5, a);
         const p2 = polarPoint(CX, CY, R + 11, a);
-        const c = v <= 3 ? '#10b981' : v <= 6 ? '#f59e0b' : '#ef4444';
+        const c = v <= 3 ? '#00e5a0' : v <= 6 ? '#f59e0b' : '#ff4466';
         return <line key={v} x1={p1.x.toFixed(1)} y1={p1.y.toFixed(1)} x2={p2.x.toFixed(1)} y2={p2.y.toFixed(1)} stroke={c} strokeWidth="1.5" opacity="0.55" strokeLinecap="round"/>;
       })}
       {/* Fill arc */}
@@ -329,8 +329,8 @@ function App() {
 
   // ── Derived values ───────────────────────────────────────────────────────────
   const phase      = status?.phase ?? 'Unknown';
-  const phaseColor = phase.toLowerCase().includes('nina') ? '#3b82f6'
-    : phase.toLowerCase().includes('nino') || phase.toLowerCase().includes('niño') ? '#ef4444'
+  const phaseColor = phase.toLowerCase().includes('nina') ? '#00d4ff'
+    : phase.toLowerCase().includes('nino') || phase.toLowerCase().includes('niño') ? '#ff4466'
     : '#6b7280';
 
   const phasePillStyle = phase.toLowerCase().includes('nina')
@@ -357,10 +357,19 @@ function App() {
         ];
 
   const forecastColor = forecast?.predicted_phase
-    ? forecast.predicted_phase.toLowerCase().includes('nina') ? '#3b82f6'
-      : forecast.predicted_phase.toLowerCase().includes('nino') ? '#ef4444'
-      : '#6b7280'
-    : '#6b7280';
+    ? forecast.predicted_phase.toLowerCase().includes('nina') ? '#00d4ff'
+      : forecast.predicted_phase.toLowerCase().includes('nino') ? '#ff4466'
+      : '#64748b'
+    : '#64748b';
+
+  const riskChipClass = (level) => {
+    const l = (level || '').toLowerCase();
+    if (l === 'extreme') return 'extreme';
+    if (l === 'high') return 'high';
+    if (l === 'medium') return 'medium';
+    if (l === 'low') return 'low';
+    return 'unknown';
+  };
 
   // ── Main dashboard ───────────────────────────────────────────────────────────
   return (
@@ -372,102 +381,122 @@ function App() {
           <div className="logo">
             <span className="logo-icon">🌊</span>
             <div>
-              <h1>ENSO Intelligence Platform</h1>
-              <p>AI-powered climate risk intelligence</p>
+              <h1>ENSO INTELLIGENCE</h1>
+              <p>AI-Powered Climate Risk Platform</p>
             </div>
           </div>
           <div className="header-right">
             {lastUpdated && (
-              <span className="header-updated">Updated {getTimeAgo(lastUpdated)}</span>
+              <span className="header-updated">SYS {getTimeAgo(lastUpdated)}</span>
             )}
             <button onClick={triggerRunNow} disabled={running} className="run-btn">
-              {running ? '⏳ Running…' : '▶ Run Now'}
+              {running ? '⏳ RUNNING…' : '▶ RUN NOW'}
             </button>
             <div className="live-badge">
               <span className="live-dot"></span>LIVE
             </div>
             <div className="phase-pill" style={phasePillStyle}>
               {phase}
-              {status?.trend && (
-                <span style={{ marginLeft: '8px', fontSize: '0.9rem' }}>
-                  {status.trend.toLowerCase().includes('rising') && '↗'}
-                  {status.trend.toLowerCase().includes('falling') && '↘'}
-                  {status.trend.toLowerCase().includes('weakening') && '↗'}
-                </span>
-              )}
             </div>
           </div>
         </div>
       </header>
 
+      {/* ── Mission status strip ── */}
+      <div className="mission-strip">
+        <div className="ms-item">
+          <span className="ms-label">Phase</span>
+          <span className="ms-value" style={{ color: phaseColor === '#6b7280' ? '#64748b' : phaseColor }}>{phase.toUpperCase()}</span>
+        </div>
+        <div className="ms-divider"/>
+        <div className="ms-item">
+          <span className="ms-label">MEI Index</span>
+          <span className="ms-value">{status?.mei_value != null ? (animatedMei >= 0 ? '+' : '') + animatedMei.toFixed(2) : '—'}</span>
+        </div>
+        <div className="ms-divider"/>
+        <div className="ms-item">
+          <span className="ms-label">Risk Level</span>
+          <span className="ms-value" style={{ color: riskScore >= 7 ? '#ff4466' : riskScore >= 4 ? '#f59e0b' : '#00e5a0' }}>
+            {riskScore >= 7 ? 'ELEVATED' : riskScore >= 4 ? 'MODERATE' : 'NOMINAL'} [{riskScore}/10]
+          </span>
+        </div>
+        <div className="ms-divider"/>
+        <div className="ms-item">
+          <span className="ms-label">Trend</span>
+          <span className="ms-value" style={{ color: '#64748b' }}>{status?.trend?.toUpperCase() ?? '—'}</span>
+        </div>
+        <div className="ms-divider"/>
+        <div className="ms-item">
+          <span className="ms-label">6M Forecast</span>
+          <span className="ms-value" style={{ color: forecastColor }}>
+            {forecast?.predicted_phase ? `${forecast.predicted_phase.toUpperCase()} ${forecast.confidence_pct}%` : '—'}
+          </span>
+        </div>
+        <div className="ms-divider"/>
+        <div className="ms-item">
+          <span className="ms-label">Report Date</span>
+          <span className="ms-value" style={{ color: '#64748b' }}>{status?.report_date ?? '—'}</span>
+        </div>
+      </div>
+
       {/* ── Stats row (5 cards) ── */}
       <div className="stats-row">
-        {/* MEI Index + sparkline */}
         <div className="stat-card">
           <span className="stat-label">MEI Index</span>
-          <span className={`stat-value ${phaseColor === '#3b82f6' ? 'glow-blue' : phaseColor === '#ef4444' ? 'glow-red' : ''}`}
-            style={{ color: phaseColor }}>
+          <span className="stat-value glow-cyan">
             {status?.mei_value != null ? (animatedMei >= 0 ? '+' : '') + animatedMei.toFixed(2) : '-'}
           </span>
           <span className="stat-sub">Multivariate ENSO Index</span>
-          <MiniSparkline data={chartData.slice(-8)} color={phaseColor} />
+          <MiniSparkline data={chartData.slice(-8)} color="#00d4ff" />
         </div>
 
-        {/* Trend */}
         <div className="stat-card">
           <span className="stat-label">Trend</span>
-          <span className="stat-value" style={{ fontSize: '1.4rem', letterSpacing: '-0.5px', color: '#94a3b8' }}>
+          <span className="stat-value sm" style={{ color: '#64748b', fontSize: '1.2rem' }}>
             {status?.trend ?? '-'}
           </span>
           <span className="stat-sub">Current direction</span>
         </div>
 
-        {/* Risk Score */}
         <div className="stat-card">
           <span className="stat-label">Risk Score</span>
-          <span className={`stat-value ${riskScore >= 7 ? 'glow-red' : riskScore >= 4 ? 'glow-amber' : 'glow-green'}`}
-            style={{ color: riskScore >= 7 ? '#ef4444' : riskScore >= 4 ? '#f59e0b' : '#10b981' }}>
-            {status ? `${Math.round(animatedRisk)}` : '-'}
-            <span style={{ fontSize: '1rem', fontWeight: 500, color: '#334155', letterSpacing: 0 }}>/10</span>
+          <span className={`stat-value ${riskScore >= 7 ? 'glow-red' : riskScore >= 4 ? 'glow-amber' : 'glow-green'}`}>
+            {status ? Math.round(animatedRisk) : '-'}
+            <span style={{ fontSize: '1.1rem', fontWeight: 400, color: '#1e3a5f' }}>/10</span>
           </span>
-          <span className="stat-sub">Overall risk level</span>
+          <span className="stat-sub">{riskScore >= 7 ? 'ELEVATED' : riskScore >= 4 ? 'MODERATE' : 'NOMINAL'}</span>
           <div className="stat-risk-bar">
             <div className="stat-risk-fill" style={{
               width: `${(riskScore / 10) * 100}%`,
-              background: riskScore >= 7 ? '#ef4444' : riskScore >= 4 ? '#f59e0b' : '#10b981',
-              boxShadow: `0 0 8px ${riskScore >= 7 ? '#ef4444' : riskScore >= 4 ? '#f59e0b' : '#10b981'}`
+              background: riskScore >= 7 ? '#ff4466' : riskScore >= 4 ? '#f59e0b' : '#00e5a0',
+              boxShadow: `0 0 6px ${riskScore >= 7 ? '#ff4466' : riskScore >= 4 ? '#f59e0b' : '#00e5a0'}`
             }}/>
           </div>
         </div>
 
-        {/* Report Date */}
         <div className="stat-card">
           <span className="stat-label">Report Date</span>
-          <span className="stat-value" style={{ fontSize: '1.1rem', letterSpacing: '-0.3px', color: '#64748b' }}>
+          <span className="stat-value sm" style={{ color: '#334155' }}>
             {status?.report_date ?? '-'}
           </span>
           <span className="stat-sub">Last generated</span>
         </div>
 
-        {/* 6-Month Forecast (5th card) */}
         {forecast?.predicted_phase ? (
           <div className="stat-card">
             <span className="stat-label">6M Forecast</span>
-            <span className="stat-value" style={{ color: forecastColor, fontSize: '1rem', lineHeight: 1.2 }}>
+            <span className="stat-value sm" style={{ color: forecastColor, fontSize: '1.1rem' }}>
               {forecast.predicted_phase}
             </span>
-            <span className="stat-sub" style={{ marginTop: 4 }}>{forecast.confidence_pct}% confidence</span>
-            <div className="stat-risk-bar" style={{ marginTop: 8 }}>
-              <div className="stat-risk-fill" style={{
-                width: `${forecast.confidence_pct ?? 0}%`,
-                background: forecastColor
-              }}/>
+            <span className="stat-sub">{forecast.confidence_pct}% confidence</span>
+            <div className="stat-risk-bar">
+              <div className="stat-risk-fill" style={{ width: `${forecast.confidence_pct ?? 0}%`, background: forecastColor, boxShadow: `0 0 6px ${forecastColor}` }}/>
             </div>
           </div>
         ) : (
-          <div className="stat-card" style={{ opacity: 0.4 }}>
+          <div className="stat-card" style={{ opacity: 0.35 }}>
             <span className="stat-label">6M Forecast</span>
-            <span className="stat-value" style={{ fontSize: '1rem', color: '#475569' }}>—</span>
+            <span className="stat-value sm" style={{ color: '#334155' }}>—</span>
             <span className="stat-sub">No forecast yet</span>
           </div>
         )}
@@ -476,98 +505,109 @@ function App() {
       {/* ── Phase Timeline ── */}
       <PhaseTimeline data={chartData} forecast={forecast} />
 
-      {/* ── MEI Chart + Executive Summary ── */}
-      <div className="grid-2">
-        <div className="card">
+      {/* ── MEI Chart (60%) + Commodity Risk Table (40%) ── */}
+      <div className="grid-60-40">
+        <div className="card" style={{ marginBottom: 0 }}>
           <div className="card-header">
             <h3>MEI Index Trend &amp; Forecast</h3>
-            <span className="card-badge">{forecast ? '12mo history + 9mo forecast' : 'Last 12 months'}</span>
+            <span className="card-badge">{forecast ? '12MO HIST + 9MO FCST' : 'LAST 12 MONTHS'}</span>
           </div>
-          <ResponsiveContainer width="100%" height={240}>
+          <ResponsiveContainer width="100%" height={280}>
             <ComposedChart
               data={forecast ? [...(forecast.historical || []), ...(forecast.forecast || [])] : chartData}
               margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
             >
               <defs>
                 <linearGradient id="meiGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor={phaseColor} stopOpacity={0.25}/>
-                  <stop offset="95%" stopColor={phaseColor} stopOpacity={0.02}/>
+                  <stop offset="5%"  stopColor="#00d4ff" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#00d4ff" stopOpacity={0.02}/>
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="1 4" stroke="rgba(255,255,255,0.04)" vertical={false}/>
-              <XAxis dataKey="month" stroke="#334155" fontSize={11} tick={{ fill: '#475569' }} axisLine={false} tickLine={false}/>
-              <YAxis stroke="#334155" fontSize={11} domain={['auto', 'auto']} width={36} tick={{ fill: '#475569' }} axisLine={false} tickLine={false}/>
-              <ReferenceLine y={0.5}  stroke="rgba(239,68,68,0.4)"   strokeDasharray="4 4" strokeWidth={1.5}/>
-              <ReferenceLine y={-0.5} stroke="rgba(59,130,246,0.4)"  strokeDasharray="4 4" strokeWidth={1.5}/>
+              <CartesianGrid strokeDasharray="1 6" stroke="rgba(0,212,255,0.06)" vertical={false}/>
+              <XAxis dataKey="month" stroke="#1e3a5f" fontSize={10} tick={{ fill: '#334155', fontFamily: 'Space Mono, monospace' }} axisLine={false} tickLine={false}/>
+              <YAxis stroke="#1e3a5f" fontSize={10} domain={['auto', 'auto']} width={36} tick={{ fill: '#334155', fontFamily: 'Space Mono, monospace' }} axisLine={false} tickLine={false}/>
+              <ReferenceLine y={0.5}  stroke="rgba(255,68,102,0.5)"  strokeDasharray="4 4" strokeWidth={1} label={{ value: 'EL NIÑO', fill: 'rgba(255,68,102,0.5)', fontSize: 8, fontFamily: 'Space Mono' }}/>
+              <ReferenceLine y={-0.5} stroke="rgba(0,212,255,0.5)"  strokeDasharray="4 4" strokeWidth={1} label={{ value: 'LA NIÑA', fill: 'rgba(0,212,255,0.5)', fontSize: 8, fontFamily: 'Space Mono' }}/>
               <Tooltip
-                contentStyle={{ background: 'rgba(4,7,15,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#e2e8f0', padding: '10px 14px', fontSize: '0.82rem' }}
-                cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }}
+                contentStyle={{ background: 'rgba(6,9,18,0.97)', border: '1px solid rgba(0,212,255,0.2)', borderRadius: '6px', color: '#e2f4ff', padding: '10px 14px', fontSize: '0.78rem', fontFamily: 'Space Mono, monospace' }}
+                cursor={{ stroke: 'rgba(0,212,255,0.15)', strokeWidth: 1 }}
                 formatter={(value, name) => {
                   if (name === 'lower' || name === 'upper') return ['', ''];
-                  if (typeof value === 'number') return [value.toFixed(2), name === 'mei' ? 'MEI Index' : name];
+                  if (typeof value === 'number') return [value.toFixed(2), 'MEI'];
                   return [value, name];
                 }}
               />
-              <Area
-                type="monotone" dataKey="mei"
-                fill="url(#meiGrad)" stroke="none"
-                isAnimationActive={true} animationDuration={900}
-              />
+              <Area type="monotone" dataKey="mei" fill="url(#meiGrad)" stroke="none" isAnimationActive={true} animationDuration={900}/>
               <Line
-                type="monotone" dataKey="mei" stroke={phaseColor} strokeWidth={2.5}
+                type="monotone" dataKey="mei" stroke="#00d4ff" strokeWidth={2}
                 isAnimationActive={true} animationDuration={900}
                 dot={(props) => {
                   const { cx, cy, payload } = props;
-                  if (payload.is_forecast) return <circle key={cx} cx={cx} cy={cy} r={3} fill="#475569" stroke="#334155" strokeWidth={1.5}/>;
-                  return <circle key={cx} cx={cx} cy={cy} r={4} fill={phaseColor} stroke="rgba(4,7,15,0.8)" strokeWidth={2}/>;
+                  if (payload.is_forecast) return <circle key={cx} cx={cx} cy={cy} r={2.5} fill="#334155" stroke="#1e3a5f" strokeWidth={1}/>;
+                  return <circle key={cx} cx={cx} cy={cy} r={3.5} fill="#00d4ff" stroke="rgba(6,9,18,0.9)" strokeWidth={2}/>;
                 }}
-                activeDot={{ r: 6, strokeWidth: 2, stroke: '#ffffff', fill: phaseColor }}
+                activeDot={{ r: 5, strokeWidth: 2, stroke: '#ffffff', fill: '#00d4ff' }}
               />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
 
+        <div className="card" style={{ marginBottom: 0 }}>
+          <div className="card-header">
+            <h3>Commodity Risk Matrix</h3>
+            <span className="card-badge">LIVE ANALYSIS</span>
+          </div>
+          <div className="risk-table-header">
+            <span>COMMODITY</span>
+            <span>STATUS</span>
+            <span>OUTLOOK</span>
+          </div>
+          {Object.entries(market).map(([commodity, info]) => {
+            const meta = COMMODITY_META[commodity] || { icon: '📊', label: commodity.replace(/_/g, ' ') };
+            const chipClass = riskChipClass(info.risk_level);
+            const rowColor = chipClass === 'high' || chipClass === 'extreme' ? 'rgba(255,68,102,0.06)' : chipClass === 'medium' ? 'rgba(245,158,11,0.04)' : 'transparent';
+            const borderColor = chipClass === 'high' || chipClass === 'extreme' ? '#ff4466' : chipClass === 'medium' ? '#f59e0b' : '#00e5a0';
+            return (
+              <div className="risk-row" key={commodity} style={{ background: rowColor, borderLeftColor: borderColor }}>
+                <div className="risk-row-commodity">
+                  <span className="commodity-icon">{meta.icon}</span>
+                  <span className="commodity-name">{meta.label}</span>
+                </div>
+                <div className="risk-level-cell">
+                  <span className={`risk-chip ${chipClass}`}>{info.risk_level || 'N/A'}</span>
+                </div>
+                <div className="risk-outlook-cell">{info.outlook}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Executive Summary + Risk Gauge ── */}
+      <div className="grid-2" style={{ marginTop: 12 }}>
         <div className="card">
           <div className="card-header">
             <h3>Executive Summary</h3>
+            <span className="card-badge">AI GENERATED</span>
           </div>
           <p className="summary-text">{report?.executive_summary ?? ''}</p>
-
-          {/* Gauge replaces flat bar */}
+          <a href={API_BASE + '/latest-report/download'} className="download-btn" target="_blank" rel="noreferrer">
+            ↓ DOWNLOAD PDF REPORT
+          </a>
+        </div>
+        <div className="card">
+          <div className="card-header">
+            <h3>Risk Assessment</h3>
+          </div>
           <div className="risk-gauge-wrap">
             <div className="risk-gauge-label">Overall Risk Level</div>
             <RiskGauge score={riskScore} />
           </div>
-
-          <a href={API_BASE + '/latest-report/download'} className="download-btn" target="_blank" rel="noreferrer">
-            📄 Download PDF Report
-          </a>
-        </div>
-      </div>
-
-      {/* ── Commodity Market Risks ── */}
-      <div className="card">
-        <div className="card-header">
-          <h3>Commodity Market Risks</h3>
-          <span className="card-badge">Real-time analysis</span>
-        </div>
-        <div className="commodity-grid">
-          {Object.entries(market).map(([commodity, info]) => {
-            const meta = COMMODITY_META[commodity] || { icon: '📊', label: commodity.replace(/_/g, ' ').toUpperCase() };
-            const rc = riskColor(info.risk_level);
-            return (
-              <div className="commodity-card" key={commodity} style={{ borderLeft: `3px solid ${rc}` }}>
-                <div className="commodity-top">
-                  <div className="commodity-name-wrap">
-                    <span className="commodity-icon">{meta.icon}</span>
-                    <span className="commodity-name">{meta.label}</span>
-                  </div>
-                  <span className="risk-badge" style={{ background: rc }}>{info.risk_level}</span>
-                </div>
-                <p className="commodity-outlook">{info.outlook}</p>
-              </div>
-            );
-          })}
+          {status?.outlook && (
+            <p style={{ fontSize: '0.82rem', color: '#64748b', lineHeight: 1.7, marginTop: 8, padding: '10px 12px', background: 'rgba(0,212,255,0.03)', borderRadius: 6, borderLeft: '2px solid rgba(0,212,255,0.3)' }}>
+              {status.outlook}
+            </p>
+          )}
         </div>
       </div>
 
@@ -637,7 +677,7 @@ function App() {
                   <XAxis dataKey="name" stroke="#64748b" fontSize={11}/>
                   <YAxis stroke="#64748b" fontSize={11} domain={[0, 100]}/>
                   <Tooltip contentStyle={{ background: 'rgba(13,21,32,0.95)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#e2e8f0' }} formatter={(v) => `${v}%`}/>
-                  <Bar dataKey="value" fill="#0ea5e9" radius={[8, 8, 0, 0]}/>
+                  <Bar dataKey="value" fill="#00d4ff" radius={[4, 4, 0, 0]}/>
                 </BarChart>
               </ResponsiveContainer>
             </div>
