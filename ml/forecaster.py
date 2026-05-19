@@ -124,21 +124,40 @@ class ENSOForecaster:
         else:
             return 'Neutral'
 
-    def forecast(self, months_ahead=6):
-        """Generate forecast for next N months with trend detection."""
+    def forecast(self, months_ahead=6, seed_mei=None, seed_date=None):
+        """Generate forecast for next N months with trend detection.
+
+        seed_mei / seed_date: optional live reading (e.g. weekly Niño3.4) that
+        is more current than the latest DB entry.  When provided, the forecast
+        starts from the live value rather than the stale DB tail.
+        """
         df = self._create_lag_features(self.data).copy()
         feature_cols = ['lag1', 'lag2', 'lag3', 'lag6', 'rolling_mean_3', 'rolling_std_3']
 
-        # Detect trend direction from last 6 months
-        last_6_months = df['mei_value'].tail(6).values
-        trend_slope = np.polyfit(range(len(last_6_months)), last_6_months, 1)[0]
+        last_date = pd.to_datetime(df['date'].iloc[-1])
+
+        if seed_mei is not None:
+            # Shift the lag window so the live reading becomes lag1
+            old_lag1 = float(df['mei_value'].iloc[-1])
+            old_lag2 = float(df['mei_value'].iloc[-2])
+            old_lag3 = float(df['mei_value'].iloc[-3])
+            old_lag6 = float(df['mei_value'].iloc[-6]) if len(df) >= 6 else old_lag1
+            rolling_mean = (seed_mei + old_lag1 + old_lag2) / 3
+            rolling_std  = float(np.std([seed_mei, old_lag1, old_lag2]))
+            current_row  = np.array([[seed_mei, old_lag1, old_lag2, old_lag6,
+                                       rolling_mean, rolling_std]])
+            # Recompute slope using the last 5 DB values plus the live seed
+            last_6 = list(df['mei_value'].tail(5).values) + [seed_mei]
+            trend_slope = np.polyfit(range(6), last_6, 1)[0]
+            if seed_date is not None:
+                last_date = pd.to_datetime(seed_date)
+        else:
+            # Detect trend direction from last 6 months of DB data
+            last_6_months = df['mei_value'].tail(6).values
+            trend_slope = np.polyfit(range(len(last_6_months)), last_6_months, 1)[0]
+            current_row = df.iloc[-1][feature_cols].values.reshape(1, -1)
 
         forecasts = []
-        last_date = pd.to_datetime(df['date'].iloc[-1])
-        last_mei = df['mei_value'].iloc[-1]
-
-        # Use last known values as starting point
-        current_row = df.iloc[-1][feature_cols].values.reshape(1, -1)
 
         for i in range(months_ahead):
             # Predict using ML model
@@ -188,8 +207,12 @@ class ENSOForecaster:
 
         return forecasts
 
-    def get_full_forecast(self):
-        """Get historical + forecast data."""
+    def get_full_forecast(self, seed_mei=None, seed_date=None):
+        """Get historical + forecast data.
+
+        seed_mei / seed_date: live reading injected as the current endpoint of the
+        historical series and as the starting point for the rolling forecast.
+        """
         df = self.data[self.data['mei_value'] >= -3].copy()
         df['date'] = pd.to_datetime(df['date'])
         df = df.sort_values('date')
@@ -206,8 +229,19 @@ class ENSOForecaster:
             for _, row in historical.iterrows()
         ]
 
+        # Append the live seed as the most-recent historical point when it is
+        # genuinely newer than the last DB entry (avoids month-label duplicates).
+        if seed_mei is not None and seed_date is not None:
+            seed_month_str = pd.to_datetime(seed_date).strftime('%b %y')
+            if not historical_data or historical_data[-1]['month'] != seed_month_str:
+                historical_data.append({
+                    'month': seed_month_str,
+                    'mei': round(seed_mei, 2),
+                    'is_forecast': False
+                })
+
         # Get forecast (extended to 9 months to show phase transitions)
-        forecast_data = self.forecast(months_ahead=9)
+        forecast_data = self.forecast(months_ahead=9, seed_mei=seed_mei, seed_date=seed_date)
 
         # Determine predicted phase from forecast
         if len(forecast_data) > 0:
@@ -248,11 +282,16 @@ class ENSOForecaster:
         }
 
 
-def run_forecast():
-    """Main function to get current forecast."""
+def run_forecast(seed_mei=None, seed_date=None):
+    """Main function to get current forecast.
+
+    seed_mei / seed_date: optional live SST anomaly (e.g. Niño3.4 weekly)
+    used to seed the rolling forecast from the current state rather than
+    the latest (potentially stale) DB entry.
+    """
     try:
         forecaster = ENSOForecaster()
-        return forecaster.get_full_forecast()
+        return forecaster.get_full_forecast(seed_mei=seed_mei, seed_date=seed_date)
     except Exception as e:
         return {
             'error': str(e),

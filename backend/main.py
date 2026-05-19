@@ -580,11 +580,28 @@ def get_mei_history():
 def get_forecast():
     """
     Returns 6-month ENSO phase forecast using ML model (Gradient Boosting).
-    Auto-refreshes MEI data from NOAA before forecasting if data is stale.
+    Seeds the rolling forecast from the live weekly Niño3.4 value when it is
+    more recent than the latest MEI in the DB, so the model starts from the
+    correct current state rather than the stale historical tail.
     """
     _refresh_mei_if_stale()
     try:
-        forecast_data = run_forecast()
+        nino34     = _get_live_nino34()
+        seed_mei   = nino34['nino34_anom'] if nino34 else None
+        seed_date  = nino34['date']         if nino34 else None
+        # Only use the seed if it is newer than the latest DB MEI
+        if seed_mei is not None and seed_date is not None:
+            try:
+                with _engine.connect() as conn:
+                    row = conn.execute(text(
+                        "SELECT MAX(date) FROM enso_data WHERE mei_value BETWEEN -3 AND 3"
+                    )).fetchone()
+                db_latest = str(row[0])[:10] if row and row[0] else "1970-01-01"
+                if seed_date <= db_latest:
+                    seed_mei = seed_date = None   # DB is equally fresh; no seed needed
+            except Exception:
+                pass  # keep seed if DB check fails
+        forecast_data = run_forecast(seed_mei=seed_mei, seed_date=seed_date)
         return JSONResponse(content=forecast_data)
     except Exception as e:
         logger.error(f"/forecast failed: {e}")
