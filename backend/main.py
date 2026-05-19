@@ -49,7 +49,7 @@ app.add_middleware(
 _report_cache: dict = {}
 
 # ── Background scheduler for weekly pipeline runs ────────────────────────────────
-scheduler = BackgroundScheduler()
+scheduler = BackgroundScheduler(timezone='UTC')
 
 
 def _scheduled_pipeline_job():
