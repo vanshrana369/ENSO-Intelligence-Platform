@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { ComposedChart, BarChart, LineChart, Bar, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts';
 import './App.css';
@@ -26,6 +26,27 @@ const COMMODITY_META = {
   sugar:       { icon: '🍬', label: 'Sugar' },
   cotton:      { icon: '🤍', label: 'Cotton' },
 };
+
+// ── Count-up animation hook ───────────────────────────────────────────────────
+function useCountUp(target, duration = 1100) {
+  const [val, setVal] = useState(0);
+  const rafRef = useRef(null);
+  useEffect(() => {
+    if (typeof target !== 'number') return;
+    const start = performance.now();
+    const from = 0;
+    const tick = (now) => {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setVal(+(from + (target - from) * eased).toFixed(2));
+      if (progress < 1) rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [target, duration]);
+  return val;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function riskColor(r) {
@@ -316,6 +337,10 @@ function App() {
   const rawRisk = status?.risk_score ?? 0;
   const riskScore = rawRisk > 10 ? Math.round(rawRisk / 10) : rawRisk;
 
+  // Count-up animated values (hooks must be called unconditionally)
+  const animatedMei   = useCountUp(typeof status?.mei_value === 'number' ? status.mei_value : 0);
+  const animatedRisk  = useCountUp(riskScore);
+
   const market = report?.market_risks ?? {};
 
   const newsItems = report?.news_items?.length
@@ -353,15 +378,7 @@ function App() {
             {lastUpdated && (
               <span className="header-updated">Updated {getTimeAgo(lastUpdated)}</span>
             )}
-            <button
-              onClick={triggerRunNow}
-              disabled={running}
-              style={{
-                background: 'transparent', border: '1px solid #334155', color: '#94a3b8',
-                borderRadius: '6px', padding: '5px 12px', fontSize: '0.75rem',
-                cursor: running ? 'not-allowed' : 'pointer', marginRight: '0.25rem',
-              }}
-            >
+            <button onClick={triggerRunNow} disabled={running} className="run-btn">
               {running ? '⏳ Running…' : '▶ Run Now'}
             </button>
             <div className="live-badge">
@@ -386,8 +403,9 @@ function App() {
         {/* MEI Index + sparkline */}
         <div className="stat-card">
           <span className="stat-label">MEI Index</span>
-          <span className="stat-value" style={{ color: phaseColor }}>
-            {status?.mei_value ?? '-'}
+          <span className={`stat-value ${phaseColor === '#3b82f6' ? 'glow-blue' : phaseColor === '#ef4444' ? 'glow-red' : ''}`}
+            style={{ color: phaseColor }}>
+            {status?.mei_value != null ? (animatedMei >= 0 ? '+' : '') + animatedMei.toFixed(2) : '-'}
           </span>
           <span className="stat-sub">Multivariate ENSO Index</span>
           <MiniSparkline data={chartData.slice(-8)} color={phaseColor} />
@@ -396,21 +414,26 @@ function App() {
         {/* Trend */}
         <div className="stat-card">
           <span className="stat-label">Trend</span>
-          <span className="stat-value">{status?.trend ?? '-'}</span>
+          <span className="stat-value" style={{ fontSize: '1.4rem', letterSpacing: '-0.5px', color: '#94a3b8' }}>
+            {status?.trend ?? '-'}
+          </span>
           <span className="stat-sub">Current direction</span>
         </div>
 
         {/* Risk Score */}
         <div className="stat-card">
           <span className="stat-label">Risk Score</span>
-          <span className="stat-value" style={{ color: riskScore >= 7 ? '#ef4444' : riskScore >= 4 ? '#f59e0b' : '#10b981' }}>
-            {status ? `${riskScore}/10` : '-'}
+          <span className={`stat-value ${riskScore >= 7 ? 'glow-red' : riskScore >= 4 ? 'glow-amber' : 'glow-green'}`}
+            style={{ color: riskScore >= 7 ? '#ef4444' : riskScore >= 4 ? '#f59e0b' : '#10b981' }}>
+            {status ? `${Math.round(animatedRisk)}` : '-'}
+            <span style={{ fontSize: '1rem', fontWeight: 500, color: '#334155', letterSpacing: 0 }}>/10</span>
           </span>
           <span className="stat-sub">Overall risk level</span>
           <div className="stat-risk-bar">
             <div className="stat-risk-fill" style={{
               width: `${(riskScore / 10) * 100}%`,
-              background: riskScore >= 7 ? '#ef4444' : riskScore >= 4 ? '#f59e0b' : '#10b981'
+              background: riskScore >= 7 ? '#ef4444' : riskScore >= 4 ? '#f59e0b' : '#10b981',
+              boxShadow: `0 0 8px ${riskScore >= 7 ? '#ef4444' : riskScore >= 4 ? '#f59e0b' : '#10b981'}`
             }}/>
           </div>
         </div>
@@ -418,7 +441,7 @@ function App() {
         {/* Report Date */}
         <div className="stat-card">
           <span className="stat-label">Report Date</span>
-          <span className="stat-value" style={{ fontSize: '1.1rem' }}>
+          <span className="stat-value" style={{ fontSize: '1.1rem', letterSpacing: '-0.3px', color: '#64748b' }}>
             {status?.report_date ?? '-'}
           </span>
           <span className="stat-sub">Last generated</span>
@@ -461,34 +484,42 @@ function App() {
           <ResponsiveContainer width="100%" height={240}>
             <ComposedChart
               data={forecast ? [...(forecast.historical || []), ...(forecast.forecast || [])] : chartData}
-              margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+              margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(15, 31, 53, 0.6)" verticalPoints={[0]}/>
-              <XAxis dataKey="month" stroke="#64748b" fontSize={12}/>
-              <YAxis stroke="#64748b" fontSize={12} domain={['auto', 'auto']} width={40}/>
-              <ReferenceLine y={0.5} stroke="#ef4444" strokeDasharray="5 5" strokeWidth={2} name="El Niño (>0.5)"/>
-              <ReferenceLine y={-0.5} stroke="#3b82f6" strokeDasharray="5 5" strokeWidth={2} name="La Niña (<-0.5)"/>
-              <Legend verticalAlign="top" height={36} iconType="line" wrapperStyle={{ paddingBottom: '10px' }}/>
-              {forecast?.forecast?.length > 0 && (
-                <Area type="monotone" dataKey="lower" fill="rgba(59,130,246,0.1)" stroke="none" isAnimationActive={false} className="forecast-band"/>
-              )}
+              <defs>
+                <linearGradient id="meiGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%"  stopColor={phaseColor} stopOpacity={0.25}/>
+                  <stop offset="95%" stopColor={phaseColor} stopOpacity={0.02}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="1 4" stroke="rgba(255,255,255,0.04)" vertical={false}/>
+              <XAxis dataKey="month" stroke="#334155" fontSize={11} tick={{ fill: '#475569' }} axisLine={false} tickLine={false}/>
+              <YAxis stroke="#334155" fontSize={11} domain={['auto', 'auto']} width={36} tick={{ fill: '#475569' }} axisLine={false} tickLine={false}/>
+              <ReferenceLine y={0.5}  stroke="rgba(239,68,68,0.4)"   strokeDasharray="4 4" strokeWidth={1.5}/>
+              <ReferenceLine y={-0.5} stroke="rgba(59,130,246,0.4)"  strokeDasharray="4 4" strokeWidth={1.5}/>
               <Tooltip
-                contentStyle={{ background: 'rgba(13, 21, 32, 0.95)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#e2e8f0', padding: '10px' }}
+                contentStyle={{ background: 'rgba(4,7,15,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#e2e8f0', padding: '10px 14px', fontSize: '0.82rem' }}
+                cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }}
                 formatter={(value, name) => {
                   if (name === 'lower' || name === 'upper') return ['', ''];
                   if (typeof value === 'number') return [value.toFixed(2), name === 'mei' ? 'MEI Index' : name];
                   return [value, name];
                 }}
               />
+              <Area
+                type="monotone" dataKey="mei"
+                fill="url(#meiGrad)" stroke="none"
+                isAnimationActive={true} animationDuration={900}
+              />
               <Line
-                type="monotone" dataKey="mei" stroke="#0ea5e9" strokeWidth={3}
-                isAnimationActive={true} animationDuration={800}
+                type="monotone" dataKey="mei" stroke={phaseColor} strokeWidth={2.5}
+                isAnimationActive={true} animationDuration={900}
                 dot={(props) => {
                   const { cx, cy, payload } = props;
-                  if (payload.is_forecast) return <circle cx={cx} cy={cy} r={4} fill="#64748b" stroke="#64748b" strokeWidth={2}/>;
-                  return <circle cx={cx} cy={cy} r={5} fill="#0ea5e9" stroke="rgba(14,165,233,0.3)" strokeWidth={2}/>;
+                  if (payload.is_forecast) return <circle key={cx} cx={cx} cy={cy} r={3} fill="#475569" stroke="#334155" strokeWidth={1.5}/>;
+                  return <circle key={cx} cx={cx} cy={cy} r={4} fill={phaseColor} stroke="rgba(4,7,15,0.8)" strokeWidth={2}/>;
                 }}
-                activeDot={{ r: 7, strokeWidth: 2, stroke: '#ffffff' }}
+                activeDot={{ r: 6, strokeWidth: 2, stroke: '#ffffff', fill: phaseColor }}
               />
             </ComposedChart>
           </ResponsiveContainer>
