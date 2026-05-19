@@ -4,33 +4,29 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --cyan:    #00c8ff;
+  --cyan:    #00d4ff;
   --green:   #00e5a0;
   --amber:   #f59e0b;
   --red:     #ff4466;
   --purple:  #a855f7;
 
-  --bg:      #071c3a;
-  --bg-card: rgba(6, 20, 48, 0.62);
-  --border:  rgba(0, 200, 240, 0.13);
-  --border-b: rgba(0, 200, 240, 0.28);
+  --bg:      #061628;
+  --bg-card: rgba(4, 18, 42, 0.70);
+  --border:  rgba(0, 210, 255, 0.18);
+  --border-b: rgba(0, 210, 255, 0.35);
 
-  --text-1:  #d4eeff;
-  --text-2:  #4d7a9a;
+  --text-1:  #e2f4ff;
+  --text-2:  #5b8db0;
   --text-3:  #1a3f5c;
 }
 
-/* ── Body — ocean gradient, NOT pure black ──────────────────────────────────── */
+/* ── Body — deep ocean, NOT pure black ─────────────────────────────────────── */
 body {
   font-family: 'Inter', -apple-system, sans-serif;
-  /* Multi-stop ocean gradient — visibly lighter than before */
   background:
-    linear-gradient(160deg,
-      #071c3a 0%,
-      #0a2444 30%,
-      #082038 60%,
-      #05172e 100%
-    );
+    radial-gradient(ellipse at 20% 30%, rgba(0, 100, 200, 0.22) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 70%, rgba(0, 180, 220, 0.14) 0%, transparent 55%),
+    linear-gradient(175deg, #0a1f3d 0%, #071828 40%, #050f1e 100%);
   background-attachment: fixed;
   color: var(--text-1);
   min-height: 100vh;
@@ -42,11 +38,11 @@ body {
 .ocean-wave-wrap {
   position: fixed;
   bottom: 0; left: 0; right: 0;
-  height: 90px;
+  height: 110px;
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
-  opacity: 0.55;
+  opacity: 0.85;
 }
 .ocean-wave-wrap svg {
   position: absolute;
@@ -59,7 +55,7 @@ body {
 }
 .ocean-wave-wrap svg:last-child {
   animation: wave-b 13s linear infinite reverse;
-  opacity: 0.5;
+  opacity: 0.6;
 }
 @keyframes wave-a {
   from { transform: translateX(0);    }

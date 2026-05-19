@@ -61,8 +61,9 @@ function OceanBackground({ phase }) {
 
     const isLaNina = phase?.toLowerCase().includes('nina');
     const isElNino = phase?.toLowerCase().includes('nino') || phase?.toLowerCase().includes('niño');
-    // La Niña → cool ocean blue, El Niño → warm amber, Neutral → sea green
-    const base = isLaNina ? [30, 160, 255] : isElNino ? [255, 110, 30] : [0, 210, 180];
+    // La Niña → vivid cyan, El Niño → warm coral, Neutral → emerald teal
+    const base = isLaNina ? [0, 200, 255] : isElNino ? [255, 120, 50] : [0, 230, 160];
+    const glowColor = `rgba(${base[0]},${base[1]},${base[2]},0.18)`;
 
     const resize = () => {
       canvas.width = window.innerWidth;
@@ -70,16 +71,18 @@ function OceanBackground({ phase }) {
     };
     resize();
 
-    const count = Math.min(Math.floor((canvas.width * canvas.height) / 14000), 140);
+    const count = Math.min(Math.floor((canvas.width * canvas.height) / 9000), 180);
     const particles = Array.from({ length: count }, () => ({
       x: Math.random() * canvas.width,
       y: Math.random() * canvas.height,
-      r: Math.random() * 2.2 + 0.4,
-      vx: (Math.random() - 0.5) * 0.4,
-      vy: -(Math.random() * 0.35 + 0.05),
-      opacity: Math.random() * 0.35 + 0.05,
+      r: Math.random() * 3.5 + 1.0,
+      vx: (Math.random() - 0.5) * 0.5,
+      vy: -(Math.random() * 0.4 + 0.08),
+      opacity: Math.random() * 0.5 + 0.25,
       phase: Math.random() * Math.PI * 2,
     }));
+
+    const LINK_DIST = 130;
 
     let frame = 0;
     const draw = () => {
@@ -88,22 +91,50 @@ function OceanBackground({ phase }) {
       const mx = mouseRef.current.x;
       const my = mouseRef.current.y;
 
+      // Draw connection lines between nearby particles
+      for (let i = 0; i < particles.length; i++) {
+        for (let j = i + 1; j < particles.length; j++) {
+          const dx = particles[i].x - particles[j].x;
+          const dy = particles[i].y - particles[j].y;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d < LINK_DIST) {
+            const alpha = (1 - d / LINK_DIST) * 0.18;
+            ctx.beginPath();
+            ctx.moveTo(particles[i].x, particles[i].y);
+            ctx.lineTo(particles[j].x, particles[j].y);
+            ctx.strokeStyle = `rgba(${base[0]},${base[1]},${base[2]},${alpha})`;
+            ctx.lineWidth = 0.8;
+            ctx.stroke();
+          }
+        }
+      }
+
       for (const p of particles) {
-        const wobble = Math.sin(frame * 0.008 + p.phase) * 0.25;
+        const wobble = Math.sin(frame * 0.009 + p.phase) * 0.3;
         const dx = p.x - mx, dy = p.y - my;
         const dist = Math.sqrt(dx * dx + dy * dy);
         let pushX = 0, pushY = 0;
-        if (dist < 100 && dist > 0) {
-          const f = ((100 - dist) / 100) * 0.9;
+        if (dist < 120 && dist > 0) {
+          const f = ((120 - dist) / 120) * 1.2;
           pushX = (dx / dist) * f;
           pushY = (dy / dist) * f;
         }
         p.x += p.vx + wobble + pushX;
         p.y += p.vy + pushY;
-        if (p.y < -6)               { p.y = canvas.height + 6; p.x = Math.random() * canvas.width; }
-        if (p.x < -6)                p.x = canvas.width + 6;
-        if (p.x > canvas.width + 6)  p.x = -6;
+        if (p.y < -8)               { p.y = canvas.height + 8; p.x = Math.random() * canvas.width; }
+        if (p.x < -8)                p.x = canvas.width + 8;
+        if (p.x > canvas.width + 8)  p.x = -8;
 
+        // Glow halo
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r * 3.5, 0, Math.PI * 2);
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 3.5);
+        grad.addColorStop(0, glowColor);
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // Core dot
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(${base[0]},${base[1]},${base[2]},${p.opacity})`;
@@ -126,7 +157,7 @@ function OceanBackground({ phase }) {
     };
   }, [phase]);
 
-  return <canvas ref={canvasRef} style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none' }} />;
+  return <canvas ref={canvasRef} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0, pointerEvents: 'none' }} />;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -457,11 +488,11 @@ function App() {
 
       {/* ── Ocean wave bottom strip ── */}
       <div className="ocean-wave-wrap">
-        <svg viewBox="0 0 1200 90" preserveAspectRatio="none">
-          <path d="M0,45 C200,80 400,10 600,45 C800,80 1000,10 1200,45 L1200,90 L0,90 Z" fill="rgba(0,200,255,0.12)"/>
+        <svg viewBox="0 0 1200 110" preserveAspectRatio="none">
+          <path d="M0,55 C200,95 400,15 600,55 C800,95 1000,15 1200,55 L1200,110 L0,110 Z" fill="rgba(0,200,255,0.30)"/>
         </svg>
-        <svg viewBox="0 0 1200 90" preserveAspectRatio="none">
-          <path d="M0,55 C300,15 500,75 750,40 C950,10 1100,65 1200,50 L1200,90 L0,90 Z" fill="rgba(0,180,235,0.08)"/>
+        <svg viewBox="0 0 1200 110" preserveAspectRatio="none">
+          <path d="M0,65 C300,20 500,90 750,50 C950,15 1100,75 1200,60 L1200,110 L0,110 Z" fill="rgba(0,180,235,0.20)"/>
         </svg>
       </div>
 
