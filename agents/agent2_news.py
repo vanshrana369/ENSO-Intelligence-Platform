@@ -24,9 +24,9 @@ def get_latest_news():
     engine = create_engine(DB_URL)
     with engine.connect() as conn:
         result = conn.execute(text("""
-            SELECT date, title, source 
-            FROM news_data 
-            ORDER BY date DESC 
+            SELECT date, title, source, url
+            FROM news_data
+            ORDER BY date DESC
             LIMIT 10
         """))
         rows = result.fetchall()
@@ -99,7 +99,7 @@ def run_agent2(state):
 
     # Pass raw news items through the pipeline so the final report can include them
     raw_news = [
-        {"title": row[1], "source": row[2], "date": str(row[0])}
+        {"title": row[1], "source": row[2], "date": str(row[0]), "url": row[3] or ""}
         for row in rows
     ]
 
