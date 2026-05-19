@@ -211,18 +211,21 @@ class ENSOForecaster:
 
         # Determine predicted phase from forecast
         if len(forecast_data) > 0:
-            # Get last forecasted month and trend
             predicted_mei = forecast_data[-1]['mei']
             forecast_trend = forecast_data[-1]['mei'] - forecast_data[0]['mei']
 
-            # Classify based on value AND trend direction
-            if forecast_trend > 0.3:  # Strong upward trend suggests transition to El Niño
-                predicted_phase = 'El Nino (Transition)'
-            elif forecast_trend < -0.3:  # Strong downward trend
-                predicted_phase = 'Deepening La Nina'
+            end_phase = self._classify_phase(predicted_mei)
+            start_phase = self._classify_phase(forecast_data[0]['mei'])
+
+            if start_phase != end_phase:
+                # Genuine phase transition — endpoint crosses into a different phase
+                predicted_phase = f'{start_phase} → {end_phase}'
+            elif end_phase == 'La Niña' and forecast_trend > 0.4:
+                predicted_phase = 'La Niña Weakening'
+            elif end_phase == 'El Niño' and forecast_trend < -0.4:
+                predicted_phase = 'El Niño Weakening'
             else:
-                # Use standard classification
-                predicted_phase = self._classify_phase(predicted_mei)
+                predicted_phase = end_phase
 
             # Calculate confidence (blend spread-based and trend-based confidence)
             avg_spread = np.mean([abs(f['upper'] - f['lower']) for f in forecast_data])
