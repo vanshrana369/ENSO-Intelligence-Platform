@@ -24,6 +24,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:9213546700@localhost:5432/enso_db")
+_engine = create_engine(DB_URL, pool_pre_ping=True)
 
 app = FastAPI(
     title="ENSO Intelligence Platform",
@@ -84,9 +85,8 @@ def _scheduled_pipeline_job():
 def _save_report_to_db(report: dict) -> None:
     """Upsert the report JSON into the reports table keyed by report_date."""
     try:
-        engine = create_engine(DB_URL)
         report_date = report.get("report_date", datetime.now().strftime("%Y-%m-%d"))
-        with engine.connect() as conn:
+        with _engine.connect() as conn:
             conn.execute(text("""
                 INSERT INTO reports (report_date, report_json)
                 VALUES (:date, :json)
@@ -101,8 +101,7 @@ def _save_report_to_db(report: dict) -> None:
 def _load_report_from_db() -> dict | None:
     """Load the most recent report JSON from the reports table."""
     try:
-        engine = create_engine(DB_URL)
-        with engine.connect() as conn:
+        with _engine.connect() as conn:
             row = conn.execute(text(
                 "SELECT report_json FROM reports ORDER BY report_date DESC LIMIT 1"
             )).fetchone()
@@ -137,8 +136,7 @@ def _get_report() -> dict | None:
 def startup():
     try:
         logger.info("Running startup — initializing database...")
-        engine = create_engine(DB_URL)
-        with engine.connect() as conn:
+        with _engine.connect() as conn:
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS enso_data (
                     id SERIAL PRIMARY KEY,
@@ -178,14 +176,14 @@ def startup():
         # Load MEI data
         if os.path.exists("data/raw/mei_index.csv"):
             df = pd.read_csv("data/raw/mei_index.csv")
-            df.to_sql("enso_data", engine, if_exists="replace", index=False)
+            df.to_sql("enso_data", _engine, if_exists="replace", index=False)
             logger.info(f"Stored {len(df)} ENSO records")
 
         # Load commodity data
         files = glob.glob("data/raw/commodity_prices_*.csv")
         if files:
             df = pd.read_csv(max(files))
-            df.to_sql("commodity_prices", engine, if_exists="replace", index=False)
+            df.to_sql("commodity_prices", _engine, if_exists="replace", index=False)
             logger.info(f"Stored {len(df)} commodity records")
 
         # Load news data
@@ -203,7 +201,7 @@ def startup():
                         "url": article.get("url", "")
                     })
             df = pd.DataFrame(rows)
-            df.to_sql("news_data", engine, if_exists="replace", index=False)
+            df.to_sql("news_data", _engine, if_exists="replace", index=False)
             logger.info(f"Stored {len(df)} news records")
 
         # Pre-warm the in-memory cache from DB (survives Render redeploys)
@@ -433,8 +431,7 @@ def get_mei_history():
     Falls back to the CSV file if the DB is unavailable.
     """
     try:
-        engine = create_engine(DB_URL)
-        with engine.connect() as conn:
+        with _engine.connect() as conn:
             rows = conn.execute(text("""
                 SELECT date, mei_value
                 FROM enso_data
