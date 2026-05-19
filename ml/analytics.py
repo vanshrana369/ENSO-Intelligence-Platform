@@ -26,26 +26,44 @@ def _native(obj):
 
 def get_phase_probabilities(mei_value, mei_data):
     """
-    Calculate probability of each ENSO phase based on historical frequency
-    at current MEI level ± uncertainty range.
+    Calculate forward-looking probability of each ENSO phase 6 months ahead,
+    based on historical transitions from similar MEI levels.
+
+    Logic: find all past months where MEI was within ±0.4 of the current value,
+    then look at what phase occurred 6 months LATER. This gives a true
+    transition probability rather than a trivially circular frequency count
+    (which always returns ~100% for whichever phase the current value is in).
     """
-    # Look at historical values within 0.4 of current MEI
-    similar_mei = mei_data[(mei_data['mei_value'] >= mei_value - 0.4) &
-                           (mei_data['mei_value'] <= mei_value + 0.4)]
+    window = 0.4
+    horizon = 6  # months ahead
 
-    if len(similar_mei) == 0:
-        similar_mei = mei_data  # Fallback to all data if none in range
+    mei_values = mei_data['mei_value'].values
+    n = len(mei_values)
 
-    # Count phases at this MEI level
-    el_nino = len(similar_mei[similar_mei['mei_value'] >= 0.5])
-    la_nina = len(similar_mei[similar_mei['mei_value'] <= -0.5])
-    neutral = len(similar_mei[(similar_mei['mei_value'] > -0.5) & (similar_mei['mei_value'] < 0.5)])
-    total = len(similar_mei)
+    el_nino_count = 0
+    la_nina_count = 0
+    neutral_count = 0
+    total = 0
+
+    for i in range(n - horizon):
+        if abs(mei_values[i] - mei_value) <= window:
+            future_val = mei_values[i + horizon]
+            if future_val >= 0.5:
+                el_nino_count += 1
+            elif future_val <= -0.5:
+                la_nina_count += 1
+            else:
+                neutral_count += 1
+            total += 1
+
+    if total == 0:
+        # Fallback: no historical analog — use climatological base rates
+        return {'el_nino': 35, 'la_nina': 35, 'neutral': 30}
 
     return {
-        'el_nino': max(0, min(100, int(el_nino / total * 100) if total > 0 else 0)),
-        'la_nina': max(0, min(100, int(la_nina / total * 100) if total > 0 else 0)),
-        'neutral': max(0, min(100, int(neutral / total * 100) if total > 0 else 0))
+        'el_nino': max(0, min(100, round(el_nino_count / total * 100))),
+        'la_nina': max(0, min(100, round(la_nina_count / total * 100))),
+        'neutral': max(0, min(100, round(neutral_count / total * 100)))
     }
 
 

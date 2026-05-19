@@ -20,22 +20,41 @@ def fetch_mei_data():
     response.raise_for_status()
     
     lines = response.text.strip().split('\n')
-    
-    # Skip header lines (they don't start with a year number)
-    data_lines = [l for l in lines if l.strip()[:4].isdigit()]
-    
+
     months = ['Jan','Feb','Mar','Apr','May','Jun',
               'Jul','Aug','Sep','Oct','Nov','Dec']
-    
+
     rows = []
-    for line in data_lines:
-        values = line.split()
-        year = int(values[0])
+    for line in lines:
+        tokens = line.split()
+        # Need at least year + 1 monthly value
+        if len(tokens) < 2:
+            continue
+        try:
+            year = int(tokens[0])
+        except ValueError:
+            continue
+        # Skip out-of-range years
+        if year < 1950 or year > 2100:
+            continue
+        # The NOAA header line looks like "1979 2026" — exactly 2 tokens,
+        # both 4-digit years. Detect and skip it.
+        if len(tokens) == 2:
+            try:
+                second = int(tokens[1])
+                if 1950 <= second <= 2100:
+                    continue  # It's the year-range header, not data
+            except ValueError:
+                pass
+
         for i, month in enumerate(months):
-            if i + 1 >= len(values):  # handles incomplete years like 2026
+            if i + 1 >= len(tokens):   # handles incomplete current year
                 break
-            val = float(values[i+1])
-            if val == -999.0:   # missing data
+            try:
+                val = float(tokens[i + 1])
+            except ValueError:
+                continue
+            if val == -999.0:           # NOAA missing-data sentinel
                 val = None
             rows.append({
                 'date': f"{year}-{str(i+1).zfill(2)}-01",
