@@ -49,9 +49,6 @@ function useCountUp(target, duration = 1100) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function riskColor(r) {
-  return r === 'High' || r === 'Extreme' ? '#ef4444' : r === 'Medium' ? '#f59e0b' : '#10b981';
-}
 
 function getTimeAgo(date) {
   if (!date) return null;
