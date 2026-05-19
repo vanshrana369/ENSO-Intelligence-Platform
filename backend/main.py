@@ -416,20 +416,19 @@ def get_status():
     except Exception as e:
         logger.warning(f"Could not read live MEI for status override: {e}")
 
-    # Supplement with weekly Niño3.4 — updates every week vs MEI's ~2-month lag.
-    # If the weekly reading is more recent than our latest MEI, use it as the live phase.
+    # Always use the live Niño3.4 SST anomaly as the current phase indicator.
+    # MEI is a lagged multivariate composite — during transitions it can show the
+    # OPPOSITE phase from the actual SST.  Niño3.4 SST is the direct measurement.
     nino34 = _get_live_nino34()
     nino34_anom = None
     nino34_date = None
     if nino34:
         nino34_anom = nino34['nino34_anom']
         nino34_date = nino34['date']
-        compare_date = db_mei_date or report.get("report_date", "1970-01-01")
-        if nino34_date > compare_date:
-            mei   = nino34_anom
-            phase = nino34['phase']
-            trend = "warming" if nino34_anom > 0 else "cooling"
-            logger.info(f"Status using Niño3.4 live: {nino34_date}  {nino34_anom:+.2f}  {phase}")
+        mei   = nino34_anom
+        phase = nino34['phase']
+        trend = "warming" if nino34_anom > 0 else "cooling"
+        logger.info(f"Status: Niño3.4 live {nino34_date}  {nino34_anom:+.2f}  → {phase}")
 
     return {
         "status": "ok",
@@ -623,21 +622,12 @@ def get_forecast():
     """
     _refresh_mei_if_stale()
     try:
-        nino34     = _get_live_nino34()
-        seed_mei   = nino34['nino34_anom'] if nino34 else None
-        seed_date  = nino34['date']         if nino34 else None
-        # Only use the seed if it is newer than the latest DB MEI
-        if seed_mei is not None and seed_date is not None:
-            try:
-                with _engine.connect() as conn:
-                    row = conn.execute(text(
-                        "SELECT MAX(date) FROM enso_data WHERE mei_value BETWEEN -3 AND 3"
-                    )).fetchone()
-                db_latest = str(row[0])[:10] if row and row[0] else "1970-01-01"
-                if seed_date <= db_latest:
-                    seed_mei = seed_date = None   # DB is equally fresh; no seed needed
-            except Exception:
-                pass  # keep seed if DB check fails
+        # Always seed from Niño3.4 SST — the most direct current ENSO measurement.
+        # No date guard: MEI dates can be equal or newer than sstoi.indices even while
+        # the SST reading is more accurate about the actual current phase.
+        nino34    = _get_live_nino34()
+        seed_mei  = nino34['nino34_anom'] if nino34 else None
+        seed_date = nino34['date']         if nino34 else None
         forecast_data = run_forecast(seed_mei=seed_mei, seed_date=seed_date)
         return JSONResponse(content=forecast_data)
     except Exception as e:
@@ -668,7 +658,9 @@ def get_analytics():
     - Similar historical events
     """
     try:
-        analytics = run_analytics()
+        nino34   = _get_live_nino34()
+        live_mei = nino34['nino34_anom'] if nino34 else None
+        analytics = run_analytics(current_mei=live_mei)
         return JSONResponse(content=analytics)
     except Exception as e:
         logger.error(f"/analytics failed: {e}")

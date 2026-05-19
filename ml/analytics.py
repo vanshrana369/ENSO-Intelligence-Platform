@@ -82,14 +82,15 @@ def get_forecast_accuracy(mei_data):
     if len(train) < 50:
         return {'mae': 0, 'accuracy_pct': 0, 'direction_accuracy': 0}
 
-    # Simple rolling prediction: use mean of last 3 months as next month prediction
+    # Rolling prediction: linear trend extrapolation from last 3 months.
+    # Captures direction better than a flat mean (no change prediction).
     predictions = []
     for i in range(len(test)):
         idx = len(train) + i
         if idx >= 3:
-            # Predict using last 3 values before this point
             history = mei_data['mei_value'].iloc[:idx].tail(3).values
-            pred = np.mean(history)
+            slope = np.polyfit(range(len(history)), history, 1)[0]
+            pred  = history[-1] + slope   # extrapolate one step
         else:
             pred = train['mei_value'].mean()
         predictions.append(pred)
@@ -274,9 +275,13 @@ def find_similar_events(mei_data, n_similar=3):
     return similar_events
 
 
-def run_analytics(mei_data_path=None):
+def run_analytics(mei_data_path=None, current_mei=None):
     """
     Main function: compute all analytics and return as single JSON.
+
+    current_mei: optional live Niño3.4 / MEI override.  When provided it is used
+    for phase probability calculations so the distribution reflects the actual
+    current ENSO state rather than the (potentially lagged) CSV tail value.
     """
     try:
         if mei_data_path is None:
@@ -288,10 +293,12 @@ def run_analytics(mei_data_path=None):
         mei_data = mei_data[(mei_data['mei_value'] >= -3) & (mei_data['mei_value'] <= 3)]
         mei_data = mei_data.sort_values('date').reset_index(drop=True)
 
-        current_mei = mei_data['mei_value'].iloc[-1]
+        # Use the live value for phase probabilities if supplied; otherwise fall back
+        # to the CSV tail (which may be months behind the real current state).
+        prob_mei = current_mei if current_mei is not None else mei_data['mei_value'].iloc[-1]
 
         result = {
-            'phase_probabilities': get_phase_probabilities(current_mei, mei_data),
+            'phase_probabilities': get_phase_probabilities(prob_mei, mei_data),
             'forecast_accuracy': get_forecast_accuracy(mei_data),
             'anomaly': detect_anomalies(mei_data),
             'seasonal': seasonal_decomposition(mei_data),
