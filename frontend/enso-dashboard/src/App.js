@@ -475,6 +475,9 @@ function App() {
       ? { background: 'linear-gradient(135deg, #7f1d1d 0%, #dc2626 50%, #ef4444 100%)' }
       : { background: 'linear-gradient(135deg, #374151 0%, #4b5563 50%, #6b7280 100%)' };
 
+  // True when the weekly Niño3.4 is newer than the latest MEI — used to label data source
+  const usingNino34 = !!(status?.nino34_date && status?.report_date && status.nino34_date > status.report_date);
+
   // Normalize: LLM sometimes returns 0-100 scale instead of 0-10
   const rawRisk = status?.risk_score ?? 0;
   const riskScore = rawRisk > 10 ? Math.round(rawRisk / 10) : rawRisk;
@@ -595,7 +598,7 @@ function App() {
           <span className="stat-value glow-cyan">
             {status?.mei_value != null ? (animatedMei >= 0 ? '+' : '') + animatedMei.toFixed(2) : '-'}
           </span>
-          <span className="stat-sub">Multivariate ENSO Index</span>
+          <span className="stat-sub">{usingNino34 ? 'Niño3.4 Weekly — NOAA CPC' : 'Multivariate ENSO Index'}</span>
           <MiniSparkline data={chartData.slice(-8)} color="#0077b6" />
         </div>
 

@@ -26,19 +26,23 @@ logger = logging.getLogger(__name__)
 DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:9213546700@localhost:5432/enso_db")
 _engine = create_engine(DB_URL, pool_pre_ping=True)
 
-# Track last MEI refresh so we don't hammer NOAA on every request
+# Rate-limit NOAA requests — don't hammer on every API call
 _last_mei_refresh: datetime | None = None
-MEI_REFRESH_INTERVAL = timedelta(hours=12)
+_last_nino34_refresh: datetime | None = None
+_cached_nino34: dict | None = None          # { date, nino34_anom, phase }
+MEI_REFRESH_INTERVAL    = timedelta(hours=12)
+NINO34_REFRESH_INTERVAL = timedelta(hours=6)
+
+_DP_PATH = os.path.join(os.path.dirname(__file__), '..', 'data_pipeline')
+if _DP_PATH not in sys.path:
+    sys.path.insert(0, _DP_PATH)
 
 
 def _refresh_mei_if_stale():
-    """Re-fetch MEI data from NOAA if our DB copy is >30 days old or missing recent months."""
+    """Re-fetch MEI v2 from NOAA PSL if our DB copy is >30 days old."""
     global _last_mei_refresh
-
-    # Don't re-check more than once per refresh interval within the same dyno session
     if _last_mei_refresh and (datetime.utcnow() - _last_mei_refresh) < MEI_REFRESH_INTERVAL:
         return
-
     try:
         with _engine.connect() as conn:
             row = conn.execute(text(
@@ -46,20 +50,37 @@ def _refresh_mei_if_stale():
             )).fetchone()
         latest_date = pd.to_datetime(row[0]) if row and row[0] else None
         days_old = (datetime.utcnow() - latest_date).days if latest_date else 9999
-
         if days_old > 30:
-            logger.info(f"MEI data is {days_old} days old — refreshing from NOAA...")
-            dp_path = os.path.join(os.path.dirname(__file__), '..', 'data_pipeline')
-            if dp_path not in sys.path:
-                sys.path.insert(0, dp_path)
+            logger.info(f"MEI data is {days_old}d old — refreshing from NOAA PSL...")
             from fetch_noaa import fetch_mei_data
             fetch_mei_data()
-            _last_mei_refresh = datetime.utcnow()
-            logger.info("MEI data refreshed from NOAA successfully")
-        else:
-            _last_mei_refresh = datetime.utcnow()
+            logger.info("MEI refreshed successfully")
+        _last_mei_refresh = datetime.utcnow()
     except Exception as e:
-        logger.warning(f"MEI auto-refresh failed (using existing data): {e}")
+        logger.warning(f"MEI auto-refresh failed: {e}")
+
+
+def _get_live_nino34() -> dict | None:
+    """
+    Fetch weekly Niño3.4 SST anomaly from NOAA CPC (updates every week).
+    Cached for 6 hours so we don't hit NOAA on every request.
+    Returns { date, nino34_anom, phase } or None on failure.
+    """
+    global _last_nino34_refresh, _cached_nino34
+    if _cached_nino34 and _last_nino34_refresh and \
+            (datetime.utcnow() - _last_nino34_refresh) < NINO34_REFRESH_INTERVAL:
+        return _cached_nino34
+    try:
+        from fetch_nino34 import fetch_nino34_weekly
+        result = fetch_nino34_weekly()
+        if result:
+            _cached_nino34 = result
+            _last_nino34_refresh = datetime.utcnow()
+            logger.info(f"Niño3.4 live: {result['date']}  {result['nino34_anom']:+.2f}  {result['phase']}")
+        return result
+    except Exception as e:
+        logger.warning(f"Niño3.4 fetch failed: {e}")
+        return _cached_nino34  # return stale cache rather than nothing
 
 
 app = FastAPI(
@@ -333,6 +354,7 @@ def get_status():
 
     # Override phase/MEI with the freshest DB value so the dashboard
     # always reflects the latest NOAA data, not a potentially weeks-old report
+    db_mei_date = None
     try:
         with _engine.connect() as conn:
             row = conn.execute(text("""
@@ -342,7 +364,7 @@ def get_status():
             """)).fetchone()
         if row:
             live_mei = float(row[1])
-            live_date = str(row[0])[:10]
+            db_mei_date = str(row[0])[:10]
             live_phase = (
                 "El Niño" if live_mei >= 0.5
                 else "La Niña" if live_mei <= -0.5
@@ -350,12 +372,27 @@ def get_status():
             )
             # Only override if the live data is newer than the report
             report_date_str = report.get("report_date", "1970-01-01")
-            if live_date > report_date_str:
+            if db_mei_date > report_date_str:
                 mei = live_mei
                 phase = live_phase
                 trend = "warming" if live_mei > (enso.get("mei_value") or 0) else trend
     except Exception as e:
         logger.warning(f"Could not read live MEI for status override: {e}")
+
+    # Supplement with weekly Niño3.4 — updates every week vs MEI's ~2-month lag.
+    # If the weekly reading is more recent than our latest MEI, use it as the live phase.
+    nino34 = _get_live_nino34()
+    nino34_anom = None
+    nino34_date = None
+    if nino34:
+        nino34_anom = nino34['nino34_anom']
+        nino34_date = nino34['date']
+        compare_date = db_mei_date or report.get("report_date", "1970-01-01")
+        if nino34_date > compare_date:
+            mei   = nino34_anom
+            phase = nino34['phase']
+            trend = "warming" if nino34_anom > 0 else "cooling"
+            logger.info(f"Status using Niño3.4 live: {nino34_date}  {nino34_anom:+.2f}  {phase}")
 
     return {
         "status": "ok",
@@ -366,6 +403,8 @@ def get_status():
         "risk_score": report.get("risk_score", 0),
         "report_date": report.get("report_date", ""),
         "last_updated": report.get("report_date", datetime.now().strftime("%Y-%m-%d")),
+        "nino34_anom": nino34_anom,
+        "nino34_date": nino34_date,
     }
 
 
