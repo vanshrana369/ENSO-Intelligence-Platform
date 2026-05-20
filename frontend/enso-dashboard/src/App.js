@@ -361,17 +361,20 @@ function App() {
   const [analytics,   setAnalytics]   = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  const fetchData = useCallback(() => {
+  const fetchData = useCallback((isRetry = false) => {
     setLoading(true);
     setError(null);
     setNoData(false);
 
+    // 25s timeout — gives Render free tier time to wake from cold start
+    const cfg = { timeout: 25000 };
+
     Promise.all([
-      axios.get(API_BASE + '/status'),
-      axios.get(API_BASE + '/latest-report'),
-      axios.get(API_BASE + '/mei-history').catch(() => null),
-      axios.get(API_BASE + '/forecast').catch(() => null),
-      axios.get(API_BASE + '/analytics').catch(() => null),
+      axios.get(API_BASE + '/status', cfg),
+      axios.get(API_BASE + '/latest-report', cfg),
+      axios.get(API_BASE + '/mei-history', cfg).catch(() => null),
+      axios.get(API_BASE + '/forecast', cfg).catch(() => null),
+      axios.get(API_BASE + '/analytics', cfg).catch(() => null),
     ])
       .then(([s, r, h, f, a]) => {
         if (s.data?.status === 'no_data') {
@@ -388,8 +391,17 @@ function App() {
         setLoading(false);
       })
       .catch((err) => {
-        if (err.response?.data?.status === 'no_data') setNoData(true);
-        else setError(err.message || 'Could not reach backend');
+        const isTimeout = err.code === 'ECONNABORTED' || err.message?.includes('timeout');
+        if (err.response?.data?.status === 'no_data') {
+          setNoData(true);
+        } else if (isTimeout && !isRetry) {
+          // Cold start — auto-retry once after a short wait
+          setError('waking_up');
+          setTimeout(() => fetchData(true), 8000);
+          return;
+        } else {
+          setError(err.message || 'Could not reach backend');
+        }
         setLoading(false);
       });
   }, []);
@@ -418,7 +430,7 @@ function App() {
   const animatedRisk = useCountUp(_riskForHook);
 
   // ── Loading ─────────────────────────────────────────────────────────────────
-  if (loading) {
+  if (loading && error !== 'waking_up') {
     return (
       <div className="loading">
         <OceanBackground phase="neutral" />
@@ -426,8 +438,27 @@ function App() {
           <div className="spinner"></div>
           <h2>Loading ENSO Intelligence Platform...</h2>
           <p style={{ color: '#64748b', fontSize: '0.85rem', marginTop: '0.5rem' }}>
-            Connecting to {API_BASE}
+            Connecting to backend...
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error === 'waking_up') {
+    return (
+      <div className="loading">
+        <OceanBackground phase="neutral" />
+        <div className="loading-inner">
+          <div className="spinner"></div>
+          <h2 style={{ color: '#f59e0b' }}>Waking up backend...</h2>
+          <p style={{ color: '#94a3b8', margin: '1rem 0', fontSize: '0.88rem', maxWidth: 340, textAlign: 'center', lineHeight: 1.6 }}>
+            The server was sleeping due to inactivity.<br/>
+            Retrying automatically — this takes up to 60 seconds on first load.
+          </p>
+          <button onClick={() => fetchData(false)} className="download-btn" style={{ display: 'inline-block', marginTop: '0.5rem' }}>
+            Retry now
+          </button>
         </div>
       </div>
     );
