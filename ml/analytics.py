@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.ensemble import GradientBoostingRegressor
 import glob
 
 # Absolute path to project root (two levels up from this file: ml/ → project root)
@@ -67,47 +68,60 @@ def get_phase_probabilities(mei_value, mei_data):
     }
 
 
+def _build_lag_features(df):
+    """Shared feature engineering for backtest — mirrors forecaster.py."""
+    df = df.copy().reset_index(drop=True)
+    v = df['mei_value']
+    df['lag1']  = v.shift(1)
+    df['lag2']  = v.shift(2)
+    df['lag3']  = v.shift(3)
+    df['lag6']  = v.shift(6)
+    df['lag9']  = v.shift(9)
+    df['lag12'] = v.shift(12)
+    df['rolling_mean_3'] = v.rolling(3).mean()
+    df['rolling_std_3']  = v.rolling(3).std().fillna(0)
+    df['rolling_mean_6'] = v.rolling(6).mean()
+    df['rolling_std_6']  = v.rolling(6).std().fillna(0)
+    months = pd.to_datetime(df['date']).dt.month
+    df['month_sin'] = np.sin(2 * np.pi * months / 12)
+    df['month_cos'] = np.cos(2 * np.pi * months / 12)
+    return df.dropna()
+
+
 def get_forecast_accuracy(mei_data):
     """
-    Backtest: train on all but last 12 months, test on last 12 months.
-    Return MAE, accuracy %, direction accuracy %.
+    Backtest the Gradient Boosting model (same architecture as forecaster.py)
+    via a single 80/20 train-test split.
+    Returns MAE, accuracy (±0.3), and direction accuracy.
     """
-    if len(mei_data) < 24:
+    if len(mei_data) < 30:
         return {'mae': 0, 'accuracy_pct': 0, 'direction_accuracy': 0}
 
-    # Split: train on all but last 12, test on last 12
-    train = mei_data[:-12].copy()
-    test = mei_data[-12:].copy()
-
-    if len(train) < 50:
+    df = _build_lag_features(mei_data)
+    if len(df) < 30:
         return {'mae': 0, 'accuracy_pct': 0, 'direction_accuracy': 0}
 
-    # Rolling prediction: linear trend extrapolation from last 3 months.
-    # Captures direction better than a flat mean (no change prediction).
-    predictions = []
-    for i in range(len(test)):
-        idx = len(train) + i
-        if idx >= 3:
-            history = mei_data['mei_value'].iloc[:idx].tail(3).values
-            slope = np.polyfit(range(len(history)), history, 1)[0]
-            pred  = history[-1] + slope   # extrapolate one step
-        else:
-            pred = train['mei_value'].mean()
-        predictions.append(pred)
+    feature_cols = ['lag1', 'lag2', 'lag3', 'lag6', 'lag9', 'lag12',
+                    'rolling_mean_3', 'rolling_std_3', 'rolling_mean_6', 'rolling_std_6',
+                    'month_sin', 'month_cos']
 
+    split = int(len(df) * 0.8)
+    train, test = df[:split], df[split:]
+
+    model = GradientBoostingRegressor(
+        n_estimators=200, learning_rate=0.05, max_depth=4,
+        subsample=0.8, min_samples_split=5, random_state=42
+    )
+    model.fit(train[feature_cols], train['mei_value'])
+    predictions = model.predict(test[feature_cols])
     actuals = test['mei_value'].values
-    predictions = np.array(predictions)
 
-    # Metrics
-    mae = np.mean(np.abs(predictions - actuals))
+    mae = float(np.mean(np.abs(predictions - actuals)))
+    accuracy = float(np.mean(np.abs(predictions - actuals) < 0.3) * 100)
 
-    # Direction accuracy: did we predict the right direction of change?
-    pred_changes = np.diff(predictions) > 0
-    actual_changes = np.diff(actuals) > 0
-    direction_acc = np.mean(pred_changes == actual_changes) * 100 if len(pred_changes) > 0 else 0
-
-    # Simple accuracy: within 0.3 of actual
-    accuracy = np.mean(np.abs(predictions - actuals) < 0.3) * 100
+    pred_dir   = np.diff(predictions) > 0
+    actual_dir = np.diff(actuals) > 0
+    direction_acc = float(np.mean(pred_dir == actual_dir) * 100) if len(pred_dir) > 0 else 0.0
 
     return {
         'mae': round(mae, 3),
@@ -189,37 +203,33 @@ def seasonal_decomposition(mei_data):
 def commodity_sensitivity(mei_data, commodity_path=None):
     """
     Calculate Pearson correlation between MEI and each commodity price.
+    Returns results for all commodities found in the CSV (dynamic).
     """
-    correlations = {}
-
     if commodity_path is None:
         commodity_path = str(_PROJECT_ROOT / 'data' / 'raw')
 
-    # Find latest commodity prices CSV
     commodity_files = glob.glob(f"{commodity_path}/commodity_prices_*.csv")
     if not commodity_files:
         return {'wheat': 0, 'crude_oil': 0, 'soybean': 0}
 
     try:
-        latest_commodity = max(commodity_files)
-        prices_df = pd.read_csv(latest_commodity)
-
-        # Get commodities
-        for commodity in ['wheat', 'crude_oil', 'soybean']:
-            commodity_prices = prices_df[prices_df['commodity'].str.lower() == commodity.lower()]['price'].values
-
-            if len(commodity_prices) > 10:
-                # Truncate to same length for correlation
-                min_len = min(len(commodity_prices), len(mei_data))
-                corr = np.corrcoef(mei_data['mei_value'].tail(min_len).values,
-                                   commodity_prices[-min_len:])[0, 1]
-                correlations[commodity] = round(corr, 2)
+        prices_df = pd.read_csv(max(commodity_files))
+        all_commodities = prices_df['commodity'].str.lower().unique().tolist()
+        correlations = {}
+        for commodity in all_commodities:
+            prices = prices_df[prices_df['commodity'].str.lower() == commodity]['price'].values
+            if len(prices) > 10:
+                min_len = min(len(prices), len(mei_data))
+                corr = np.corrcoef(
+                    mei_data['mei_value'].tail(min_len).values,
+                    prices[-min_len:]
+                )[0, 1]
+                correlations[commodity] = round(float(corr), 2) if not np.isnan(corr) else 0
             else:
                 correlations[commodity] = 0
-    except:
-        correlations = {'wheat': 0, 'crude_oil': 0, 'soybean': 0}
-
-    return correlations
+        return correlations if correlations else {'wheat': 0, 'crude_oil': 0, 'soybean': 0}
+    except Exception:
+        return {'wheat': 0, 'crude_oil': 0, 'soybean': 0}
 
 
 def find_similar_events(mei_data, n_similar=3):

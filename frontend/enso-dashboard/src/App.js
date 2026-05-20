@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
-import { ComposedChart, BarChart, LineChart, Bar, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { ComposedChart, BarChart, LineChart, Bar, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, LabelList } from 'recharts';
 import './App.css';
 
 const API_BASE =
@@ -210,7 +210,8 @@ function getRelativeDate(dateStr) {
   if (days === 0) return 'Today';
   if (days === 1) return 'Yesterday';
   if (days < 7) return `${days}d ago`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  if (days < 180) return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function polarPoint(cx, cy, r, angleDeg) {
@@ -666,7 +667,14 @@ function App() {
           </div>
           <ResponsiveContainer width="100%" height={280}>
             <ComposedChart
-              data={forecast ? [...(forecast.historical || []), ...(forecast.forecast || [])] : chartData}
+              data={forecast ? [
+                ...(forecast.historical || []),
+                ...(forecast.forecast || []).map(d => ({
+                  ...d,
+                  ci_lower: d.lower,
+                  ci_band: (d.upper != null && d.lower != null) ? +(d.upper - d.lower).toFixed(2) : undefined,
+                }))
+              ] : chartData}
               margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
             >
               <defs>
@@ -684,12 +692,16 @@ function App() {
                 contentStyle={{ background: 'white', border: '1px solid rgba(0,119,182,0.20)', borderRadius: '8px', color: '#0d2137', padding: '10px 14px', fontSize: '0.78rem', fontFamily: 'Space Mono, monospace', boxShadow: '0 4px 16px rgba(0,60,120,0.12)' }}
                 cursor={{ stroke: 'rgba(0,119,182,0.15)', strokeWidth: 1 }}
                 formatter={(value, name) => {
-                  if (name === 'lower' || name === 'upper') return ['', ''];
+                  if (name === 'ci_lower' || name === 'ci_band') return [null, null];
                   if (typeof value === 'number') return [value.toFixed(2), 'MEI'];
                   return [value, name];
                 }}
               />
+              {/* Historical fill */}
               <Area type="monotone" dataKey="mei" fill="url(#meiGrad)" stroke="none" isAnimationActive={true} animationDuration={900}/>
+              {/* Confidence band: stacked lower (transparent offset) + band (shaded) */}
+              <Area type="monotone" dataKey="ci_lower" stackId="ci" stroke="none" fill="transparent" isAnimationActive={false} connectNulls={false} legendType="none"/>
+              <Area type="monotone" dataKey="ci_band"  stackId="ci" stroke="none" fill="rgba(0,119,182,0.13)" isAnimationActive={false} connectNulls={false} legendType="none"/>
               <Line
                 type="monotone" dataKey="mei" stroke="#0077b6" strokeWidth={2.5}
                 isAnimationActive={true} animationDuration={900}
@@ -829,7 +841,9 @@ function App() {
                   <XAxis dataKey="name" stroke="#cde" fontSize={11} tick={{ fill: '#3a6585' }}/>
                   <YAxis stroke="#cde" fontSize={11} tick={{ fill: '#3a6585' }}/>
                   <Tooltip contentStyle={{ background: 'white', border: '1px solid rgba(0,119,182,0.18)', borderRadius: '8px', color: '#0d2137', boxShadow: '0 4px 16px rgba(0,60,120,0.10)' }} formatter={(v) => `${v}%`}/>
-                  <Bar dataKey="value" fill="#0077b6" radius={[4, 4, 0, 0]}/>
+                  <Bar dataKey="value" fill="#0077b6" radius={[4, 4, 0, 0]}>
+                    <LabelList dataKey="value" position="top" formatter={(v) => `${v}%`} style={{ fill: '#3a6585', fontSize: 11, fontFamily: 'Space Mono, monospace' }}/>
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>

@@ -12,11 +12,16 @@ logger = logging.getLogger(__name__)
 
 DB_URL = os.getenv("DATABASE_URL", "")
 
-# Commodity ticker symbols
+# Commodity ticker symbols — all ENSO-sensitive markets
 COMMODITIES = {
-    "wheat": "ZW=F",
-    "crude_oil": "CL=F",
-    "soybean": "ZS=F"
+    "wheat":       "ZW=F",
+    "crude_oil":   "CL=F",
+    "soybean":     "ZS=F",
+    "corn":        "ZC=F",
+    "coffee":      "KC=F",
+    "sugar":       "SB=F",
+    "cotton":      "CT=F",
+    "natural_gas": "NG=F",
 }
 
 def fetch_commodity_prices():

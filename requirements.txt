@@ -19,4 +19,4 @@ matplotlib
 scikit-learn
 Pillow
 apscheduler
-apscheduler
+slowapi

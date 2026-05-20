@@ -55,20 +55,21 @@ def run_agent3(state):
 
     prompt = f"""
     You are a commodity market analyst specializing in climate risk.
-    
+
     Current ENSO Phase: {enso_phase}
     ENSO Summary: {enso_summary}
     News Context: {news_insights[:500]}
-    
+
     Current Commodity Prices:
     {prices_text}
-    
-    Based on historical ENSO patterns (1997, 2015 El Nino events):
-    1. Assess risk level for each commodity (Low/Medium/High/Extreme)
-    2. Explain why each commodity is at risk during {enso_phase}
-    3. Give a one-line price outlook for each
-    
-    Be specific with numbers and professional in tone.
+
+    Based on historical ENSO patterns (1997, 2015 El Niño; 2010-12 La Niña events),
+    assess each commodity listed above:
+    1. Risk level: Low / Medium / High / Extreme
+    2. Which growing regions or supply chains are exposed under {enso_phase}
+    3. One-line price outlook with approximate % move and timeframe
+
+    Cover ALL commodities in the price list. Be specific with numbers and regions.
     """
 
     response = llm.invoke(prompt)

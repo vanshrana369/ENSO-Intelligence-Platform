@@ -6,9 +6,12 @@ import logging
 import requests
 import pandas as pd
 from datetime import datetime, timedelta
-from fastapi import FastAPI, HTTPException, Header, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Header, BackgroundTasks, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -120,11 +123,15 @@ def _get_live_nino34() -> dict | None:
         return _cached_nino34
 
 
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(
     title="ENSO Intelligence Platform",
     description="AI-powered climate risk intelligence API",
     version="1.0.0"
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
 # allow_credentials MUST be False when allow_origins=["*"].
@@ -170,7 +177,19 @@ def _scheduled_pipeline_job():
             logger.info("✅ Scheduled pipeline completed — cache + DB updated")
 
         # Generate PDF
-        generate_pdf(_report_cache or result)
+        # Enrich report with forecast + accuracy data for PDF embedding
+        pdf_report = dict(_report_cache or result)
+        try:
+            nino34 = _get_live_nino34()
+            pdf_report['_forecast'] = run_forecast(
+                seed_mei=nino34['nino34_anom'] if nino34 else None,
+                seed_date=nino34['date'] if nino34 else None
+            )
+            analytics_data = run_analytics(current_mei=nino34['nino34_anom'] if nino34 else None)
+            pdf_report['_accuracy'] = analytics_data.get('forecast_accuracy')
+        except Exception:
+            pass
+        generate_pdf(pdf_report)
         logger.info("📄 PDF generated for scheduled run")
     except Exception as e:
         logger.error(f"❌ Scheduled pipeline failed: {e}")
@@ -523,13 +542,26 @@ def _run_pipeline_background():
         else:
             logger.error("Pipeline completed but no report found in result or disk")
 
-        generate_pdf(_report_cache or result)
+        pdf_report = dict(_report_cache or result)
+        try:
+            nino34 = _get_live_nino34()
+            pdf_report['_forecast'] = run_forecast(
+                seed_mei=nino34['nino34_anom'] if nino34 else None,
+                seed_date=nino34['date'] if nino34 else None
+            )
+            analytics_data = run_analytics(current_mei=nino34['nino34_anom'] if nino34 else None)
+            pdf_report['_accuracy'] = analytics_data.get('forecast_accuracy')
+        except Exception:
+            pass
+        generate_pdf(pdf_report)
     except Exception as e:
         logger.error(f"Background pipeline failed: {e}")
 
 
 @app.post("/run-now")
+@limiter.limit("10/hour")
 def run_pipeline_now(
+    request: Request,
     background_tasks: BackgroundTasks,
     x_cron_secret: str | None = Header(default=None)
 ):
@@ -550,8 +582,9 @@ def run_pipeline_now(
 
 
 @app.post("/trigger")
-def trigger_pipeline(background_tasks: BackgroundTasks):
-    """Public endpoint for the dashboard Run Now button — no auth required."""
+@limiter.limit("5/minute")
+def trigger_pipeline(request: Request, background_tasks: BackgroundTasks):
+    """Public endpoint for the dashboard Run Now button — rate-limited to 5/min."""
     background_tasks.add_task(_run_pipeline_background)
     return {
         "status": "accepted",

@@ -46,13 +46,22 @@ class ENSOForecaster:
         df['lag2'] = df['mei_value'].shift(2)
         df['lag3'] = df['mei_value'].shift(3)
         df['lag6'] = df['mei_value'].shift(6)
+        df['lag9'] = df['mei_value'].shift(9)
+        df['lag12'] = df['mei_value'].shift(12)
         df['rolling_mean_3'] = df['mei_value'].rolling(window=3).mean()
         df['rolling_std_3'] = df['mei_value'].rolling(window=3).std()
+        df['rolling_mean_6'] = df['mei_value'].rolling(window=6).mean()
+        df['rolling_std_6'] = df['mei_value'].rolling(window=6).std()
 
-        # Forward fill NaN from rolling windows
+        # Cyclical month encoding so model knows which season it's in
+        months = pd.to_datetime(df['date']).dt.month
+        df['month_sin'] = np.sin(2 * np.pi * months / 12)
+        df['month_cos'] = np.cos(2 * np.pi * months / 12)
+
         df['rolling_std_3'] = df['rolling_std_3'].fillna(0)
+        df['rolling_std_6'] = df['rolling_std_6'].fillna(0)
 
-        # Drop rows with NaN from lag features (first 6 rows)
+        # Drop rows with NaN from lag features (first 12 rows)
         return df.dropna()
 
     def _train_models(self):
@@ -74,35 +83,40 @@ class ENSOForecaster:
             self.model_upper = _model_cache['model_upper']
             return
 
-        feature_cols = ['lag1', 'lag2', 'lag3', 'lag6', 'rolling_mean_3', 'rolling_std_3']
+        feature_cols = ['lag1', 'lag2', 'lag3', 'lag6', 'lag9', 'lag12',
+                        'rolling_mean_3', 'rolling_std_3', 'rolling_mean_6', 'rolling_std_6',
+                        'month_sin', 'month_cos']
         X = df[feature_cols]
         y = df['mei_value']
 
-        # Model for mean prediction (lighter config for speed)
         self.model_mean = GradientBoostingRegressor(
-            n_estimators=50,
-            learning_rate=0.1,
+            n_estimators=200,
+            learning_rate=0.05,
             max_depth=4,
+            subsample=0.8,
+            min_samples_split=5,
             random_state=42
         )
         self.model_mean.fit(X, y)
 
-        # Model for lower bound (10th percentile)
         self.model_lower = GradientBoostingRegressor(
-            n_estimators=50,
-            learning_rate=0.1,
+            n_estimators=200,
+            learning_rate=0.05,
             max_depth=4,
+            subsample=0.8,
+            min_samples_split=5,
             loss='quantile',
             alpha=0.1,
             random_state=42
         )
         self.model_lower.fit(X, y)
 
-        # Model for upper bound (90th percentile)
         self.model_upper = GradientBoostingRegressor(
-            n_estimators=50,
-            learning_rate=0.1,
+            n_estimators=200,
+            learning_rate=0.05,
             max_depth=4,
+            subsample=0.8,
+            min_samples_split=5,
             loss='quantile',
             alpha=0.9,
             random_state=42
@@ -132,78 +146,63 @@ class ENSOForecaster:
         starts from the live value rather than the stale DB tail.
         """
         df = self._create_lag_features(self.data).copy()
-        feature_cols = ['lag1', 'lag2', 'lag3', 'lag6', 'rolling_mean_3', 'rolling_std_3']
+        feature_cols = ['lag1', 'lag2', 'lag3', 'lag6', 'lag9', 'lag12',
+                        'rolling_mean_3', 'rolling_std_3', 'rolling_mean_6', 'rolling_std_6',
+                        'month_sin', 'month_cos']
 
         last_date = pd.to_datetime(df['date'].iloc[-1])
 
+        # Seed the rolling history buffer with the last 12 known values.
+        # All feature lag/rolling computations derive from this buffer so there
+        # are no index aliasing errors during the multi-step rollout.
+        buf = list(df['mei_value'].tail(12).values)   # oldest … newest, length 12
+
         if seed_mei is not None:
-            # Shift the lag window so the live reading becomes lag1
-            old_lag1 = float(df['mei_value'].iloc[-1])
-            old_lag2 = float(df['mei_value'].iloc[-2])
-            old_lag3 = float(df['mei_value'].iloc[-3])
-            old_lag6 = float(df['mei_value'].iloc[-6]) if len(df) >= 6 else old_lag1
-            rolling_mean = (seed_mei + old_lag1 + old_lag2) / 3
-            rolling_std  = float(np.std([seed_mei, old_lag1, old_lag2]))
-            current_row  = np.array([[seed_mei, old_lag1, old_lag2, old_lag6,
-                                       rolling_mean, rolling_std]])
-            # Recompute slope using the last 5 DB values plus the live seed
-            last_6 = list(df['mei_value'].tail(5).values) + [seed_mei]
-            trend_slope = np.polyfit(range(6), last_6, 1)[0]
+            buf.append(seed_mei)                       # extend with live reading
             if seed_date is not None:
                 last_date = pd.to_datetime(seed_date)
+            last_6 = buf[-6:]
+            trend_slope = np.polyfit(range(6), last_6, 1)[0]
         else:
-            # Detect trend direction from last 6 months of DB data
             last_6_months = df['mei_value'].tail(6).values
             trend_slope = np.polyfit(range(len(last_6_months)), last_6_months, 1)[0]
-            current_row = df.iloc[-1][feature_cols].values.reshape(1, -1)
+
+        def _row_from_buf(b, month):
+            """Build one feature row from the running history buffer."""
+            def _at(n): return b[-n] if len(b) >= n else b[0]
+            recent3 = [_at(1), _at(2), _at(3)]
+            recent6 = [_at(i) for i in range(1, 7)]
+            return np.array([[
+                _at(1), _at(2), _at(3), _at(6), _at(9), _at(12),
+                float(np.mean(recent3)),
+                float(np.std(recent3)),
+                float(np.mean(recent6)),
+                float(np.std(recent6)),
+                np.sin(2 * np.pi * month / 12),
+                np.cos(2 * np.pi * month / 12),
+            ]])
 
         forecasts = []
 
         for i in range(months_ahead):
-            # Predict using ML model
-            mei_ml_pred = self.model_mean.predict(current_row)[0]
-
-            # Add trend adjustment: if trending up (toward El Niño) or down (toward La Niña)
-            trend_adjustment = trend_slope * (i + 1) * 0.5
-            mei_pred = mei_ml_pred + trend_adjustment
-
-            # Clamp to realistic bounds [-2, 2]
-            mei_pred = np.clip(mei_pred, -2.0, 2.0)
-
-            mei_lower = self.model_lower.predict(current_row)[0] + trend_adjustment
-            mei_upper = self.model_upper.predict(current_row)[0] + trend_adjustment
-
-            # Ensure bounds are valid
-            mei_lower = np.clip(mei_lower, -2.0, mei_pred)
-            mei_upper = np.clip(mei_upper, mei_pred, 2.0)
-
             future_date = last_date + timedelta(days=30 * (i + 1))
-            month_str = future_date.strftime('%b %y')
+            current_row = _row_from_buf(buf, future_date.month)
+
+            mei_ml_pred = self.model_mean.predict(current_row)[0]
+            trend_adjustment = trend_slope * (i + 1) * 0.5
+            mei_pred  = np.clip(mei_ml_pred + trend_adjustment, -2.0, 2.0)
+            mei_lower = np.clip(self.model_lower.predict(current_row)[0] + trend_adjustment, -2.0, mei_pred)
+            mei_upper = np.clip(self.model_upper.predict(current_row)[0] + trend_adjustment, mei_pred, 2.0)
 
             forecasts.append({
-                'month': month_str,
+                'month': future_date.strftime('%b %y'),
                 'mei': round(mei_pred, 2),
                 'lower': round(mei_lower, 2),
                 'upper': round(mei_upper, 2),
                 'is_forecast': True
             })
 
-            # Update features for next iteration (rolling forecast)
-            mei_prev_1 = mei_pred
-            mei_prev_2 = current_row[0][0]  # old lag1 → new lag2
-            mei_prev_3 = current_row[0][1]  # old lag2 → new lag3
-            # Average the three most recent predictions (not mei_pred twice)
-            rolling_mean = (mei_pred + mei_prev_2 + mei_prev_3) / 3
-            rolling_std = np.std([mei_pred, mei_prev_2, mei_prev_3])
-
-            current_row = np.array([[
-                mei_prev_1,           # lag1
-                mei_prev_2,           # lag2
-                mei_prev_3,           # lag3
-                current_row[0][3],    # lag6 (keep last value)
-                rolling_mean,         # rolling_mean_3
-                rolling_std           # rolling_std_3
-            ]])
+            buf.append(mei_pred)   # push prediction into buffer for next step
 
         return forecasts
 

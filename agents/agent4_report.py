@@ -2,6 +2,8 @@ import os
 import json
 import logging
 from datetime import datetime
+from typing import Dict, List
+from pydantic import BaseModel, field_validator, ValidationError
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 
@@ -9,6 +11,50 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+# ── Pydantic schema for LLM output validation ─────────────────────────────────
+
+class CommodityRisk(BaseModel):
+    risk_level: str
+    outlook: str
+
+    @field_validator('risk_level')
+    @classmethod
+    def valid_risk(cls, v):
+        allowed = {'Low', 'Medium', 'High', 'Extreme', 'Unknown'}
+        if v not in allowed:
+            v = v.capitalize()
+            if v not in allowed:
+                return 'Unknown'
+        return v
+
+
+class ENSOStatus(BaseModel):
+    phase: str
+    mei_value: float
+    trend: str
+    outlook: str
+
+
+class ReportSchema(BaseModel):
+    report_date: str
+    executive_summary: str
+    enso_status: ENSOStatus
+    market_risks: Dict[str, CommodityRisk]
+    key_recommendations: List[str]
+    risk_score: int
+
+    @field_validator('risk_score')
+    @classmethod
+    def clamp_risk(cls, v):
+        return max(1, min(10, int(v)))
+
+    @field_validator('key_recommendations')
+    @classmethod
+    def at_least_one(cls, v):
+        return v if v else ['Review current ENSO conditions and monitor commodity exposure.']
+
 
 llm = ChatGroq(
     model="llama-3.1-8b-instant",
@@ -52,23 +98,19 @@ def run_agent4(state):
             "outlook": "2 sentence outlook covering transition probability and timeline"
         }},
         "market_risks": {{
-            "wheat": {{
-                "risk_level": "Low/Medium/High/Extreme",
-                "outlook": "2-3 sentences: (1) how current {enso_phase} specifically affects wheat growing regions, (2) which countries/regions are most exposed, (3) expected price direction with rough magnitude (e.g. +5-15% upside risk over 6 months)"
-            }},
-            "crude_oil": {{
-                "risk_level": "Low/Medium/High/Extreme",
-                "outlook": "2-3 sentences: (1) ENSO impact on energy demand and production regions, (2) specific supply chain or demand drivers, (3) price outlook with direction and rough range"
-            }},
-            "soybean": {{
-                "risk_level": "Low/Medium/High/Extreme",
-                "outlook": "2-3 sentences: (1) impact on South American and US growing conditions under {enso_phase}, (2) yield risk and demand dynamics, (3) price direction with rough magnitude"
-            }}
+            "wheat":       {{"risk_level": "Low/Medium/High/Extreme", "outlook": "2-3 sentences on growing region exposure, affected countries, expected price direction with % magnitude"}},
+            "crude_oil":   {{"risk_level": "Low/Medium/High/Extreme", "outlook": "2-3 sentences on energy demand/supply chains under {enso_phase}, price outlook with range"}},
+            "soybean":     {{"risk_level": "Low/Medium/High/Extreme", "outlook": "2-3 sentences on South American / US growing conditions, yield risk, price direction with % magnitude"}},
+            "corn":        {{"risk_level": "Low/Medium/High/Extreme", "outlook": "2-3 sentences on corn belt precipitation, US / Brazil exposure, price direction"}},
+            "coffee":      {{"risk_level": "Low/Medium/High/Extreme", "outlook": "2-3 sentences on Brazil / Vietnam / Colombia growing conditions under {enso_phase}, price direction"}},
+            "sugar":       {{"risk_level": "Low/Medium/High/Extreme", "outlook": "2-3 sentences on Brazil / India / Thailand cane production under {enso_phase}, price direction"}},
+            "cotton":      {{"risk_level": "Low/Medium/High/Extreme", "outlook": "2-3 sentences on US / India / Pakistan cotton belt exposure, price direction"}},
+            "natural_gas": {{"risk_level": "Low/Medium/High/Extreme", "outlook": "2-3 sentences on heating/cooling demand shifts under {enso_phase}, price outlook"}}
         }},
         "key_recommendations": [
-            "Specific actionable recommendation 1 with commodity, action, and timeframe (e.g. 'Reduce wheat exposure by 15-20% over next 60 days given elevated drought risk in Black Sea region under La Nina')",
-            "Specific actionable recommendation 2 referencing ENSO mechanism and hedging instrument or strategy",
-            "Specific actionable recommendation 3 covering portfolio diversification or alternative assets with climate resilience rationale"
+            "Specific actionable recommendation 1 with commodity, action, and timeframe",
+            "Specific actionable recommendation 2 referencing ENSO mechanism and hedging strategy",
+            "Specific actionable recommendation 3 covering portfolio diversification or climate-resilient assets"
         ],
         "risk_score": 7
     }}
@@ -95,8 +137,16 @@ def run_agent4(state):
             clean = clean.split("```")[1].split("```")[0]
         
         # Try to parse JSON
-        report = json.loads(clean)
-        
+        raw_report = json.loads(clean)
+
+        # ── Pydantic validation — catches bad risk_levels, missing fields, etc. ─
+        try:
+            validated = ReportSchema(**raw_report)
+            report = validated.model_dump()
+        except ValidationError as ve:
+            logger.warning(f"Pydantic validation warnings: {ve} — using raw parsed JSON")
+            report = raw_report
+
         # ── CRITICAL: Ensure report_date is TODAY, not what LLM returned ──────
         report["report_date"] = today
 
@@ -104,7 +154,7 @@ def run_agent4(state):
         if raw_news_items:
             report["news_items"] = raw_news_items[:6]
 
-        logger.info("JSON parsed successfully")
+        logger.info("JSON parsed and validated successfully")
         
     except json.JSONDecodeError as e:
         logger.error(f"JSON parsing failed: {e}")
