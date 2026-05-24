@@ -92,9 +92,12 @@ def run_agent4(state):
     if forecast_phase and forecast_phase != "Unknown":
         forecast_input = f"\n    - ML 6-month forecast (gradient-boosting model, same as dashboard chart): {forecast_phase}"
         forecast_rule = (
-            f"\n    - DIRECTION CONSISTENCY: Your executive_summary and enso_status.outlook MUST agree "
-            f"with the ML 6-month forecast above ({forecast_phase}). Do NOT predict the opposite direction "
-            f"(e.g. if the forecast trends toward El Niño, never say it is trending toward La Niña)."
+            f"\n    - DIRECTION CONSISTENCY: Both your executive_summary AND enso_status.outlook MUST agree "
+            f"with the ML 6-month forecast above ({forecast_phase}). Do NOT mention or hint at a transition "
+            f"toward the OPPOSITE phase anywhere in the report. If the forecast trends toward El Niño, the "
+            f"summary must also point toward El Niño — never hedge toward La Niña, and vice versa."
+            f"\n    - PHASE FACTS: El Niño is the WARM phase (positive Niño3.4 SST anomaly); La Niña is the "
+            f"COOL phase (negative anomaly); Neutral is near zero. NEVER describe La Niña as 'warm' or El Niño as 'cool'."
         )
     else:
         forecast_input = ""
@@ -151,7 +154,8 @@ def run_agent4(state):
     - Recommendations must start with an action verb and include a commodity and timeframe.
     - MEI is a dimensionless index — NEVER write a °C unit after an MEI value. The current SST anomaly value provided above IS measured in °C; the MEI is not. Do not conflate the two or invent a '°C MEI' value.
     - Do NOT state specific numeric transition-probability percentages (e.g. '50-60% probability of El Niño'). Phase-transition probabilities are computed and displayed elsewhere in the platform. Describe transition likelihood QUALITATIVELY (e.g., 'conditions increasingly favor a transition toward El Niño') and focus on mechanism and timeline.
-    - INTERNAL CONSISTENCY: For each commodity, the expected price DIRECTION (up vs down) must be IDENTICAL across executive_summary, market_risks, and key_recommendations. Never describe the same commodity as both rising and falling.
+    - INTERNAL CONSISTENCY: For each commodity, the expected price DIRECTION (up vs down) AND the % magnitude must be IDENTICAL across executive_summary, market_risks, and key_recommendations. If corn is "down 7-10%" in market_risks, it must be "down 7-10%" in the summary and recommendations too — never "up" anywhere. Never describe the same commodity as both rising and falling.
+    - ECONOMIC LOGIC: lower supply RAISES prices. A weather event (drought, heat, flooding) that REDUCES yields must push that commodity's price UP, not down. Never write "reduced yields, lower prices" — reduced yields mean HIGHER prices, all else equal.
     - TRADE LOGIC must be correct: to profit from an expected price INCREASE, recommend BUY / go long / hold long. To profit from an expected price DECREASE, recommend SELL / short / hedge short. Never pair a 'sell' action with a stated expectation of rising prices, or a 'buy' action with falling prices.
     - Each recommendation must state an action + commodity + timeframe AND a rationale whose price direction matches that commodity's market_risks outlook (and the trade logic rule above).{forecast_rule}
     """

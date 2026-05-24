@@ -43,28 +43,63 @@ def _download_with_retry(ticker, period="5y", interval="1d", attempts=3):
     return None
 
 
+def _frame_from_close(close, name, ticker):
+    """Build the standard [date, commodity, ticker, price] frame from a Close series."""
+    if isinstance(close, pd.DataFrame):
+        close = close.squeeze("columns")  # single-column DataFrame → Series
+    cdf = close.dropna().to_frame("price")
+    if cdf.empty:
+        return None
+    cdf["commodity"] = name
+    cdf["ticker"] = ticker
+    cdf["date"] = cdf.index
+    return cdf
+
+
 def fetch_commodity_prices():
     logger.info("Fetching commodity prices...")
 
+    name_by_ticker = {v: k for k, v in COMMODITIES.items()}
+    tickers = list(COMMODITIES.values())
     all_data = []
 
+    # ── One batched request for all tickers ────────────────────────────────────
+    # A single multi-ticker download avoids the per-request rate limiting that was
+    # silently dropping the later commodities (yfinance throttles rapid sequential
+    # calls, so only the first few of 8 came back).
+    try:
+        raw = yf.download(tickers, period="5y", interval="1d",
+                          progress=False, group_by="ticker")
+    except Exception as e:
+        logger.warning(f"Batch download failed: {e} — falling back to per-ticker")
+        raw = None
+
+    if raw is not None and not raw.empty and isinstance(raw.columns, pd.MultiIndex):
+        present = set(raw.columns.get_level_values(0))
+        for ticker in tickers:
+            if ticker not in present:
+                continue
+            try:
+                frame = _frame_from_close(raw[ticker]["Close"], name_by_ticker[ticker], ticker)
+                if frame is not None:
+                    all_data.append(frame)
+            except Exception as e:
+                logger.warning(f"Parse failed for {ticker}: {e}")
+
+    # ── Per-ticker fallback for anything the batch missed ──────────────────────
+    fetched_tickers = {d["ticker"].iloc[0] for d in all_data}
     for name, ticker in COMMODITIES.items():
-        logger.info(f"Fetching {name} ({ticker})...")
-
+        if ticker in fetched_tickers:
+            continue
+        logger.info(f"Retrying {name} ({ticker}) individually...")
         data = _download_with_retry(ticker)
-
         if data is None or data.empty:
             logger.warning(f"No data for {name} after retries — skipping")
             continue
-
-        data = data[["Close"]].copy()
-        data.columns = ["price"]
-        data["commodity"] = name
-        data["ticker"] = ticker
-        data["date"] = data.index
-
-        all_data.append(data)
-        time.sleep(1)  # gentle pacing between tickers to avoid rate limiting
+        frame = _frame_from_close(data["Close"], name, ticker)
+        if frame is not None:
+            all_data.append(frame)
+        time.sleep(1)  # gentle pacing between fallback requests
 
     if not all_data:
         logger.error("No commodity data fetched for any ticker — aborting save")
