@@ -1,6 +1,7 @@
 import yfinance as yf
 import pandas as pd
 import os
+import time
 import logging
 from datetime import datetime
 from dotenv import load_dotenv
@@ -24,6 +25,24 @@ COMMODITIES = {
     "natural_gas": "NG=F",
 }
 
+def _download_with_retry(ticker, period="5y", interval="1d", attempts=3):
+    """Download one ticker, retrying with backoff.
+
+    yfinance throttles rapid sequential requests — without retries a few of the
+    8 commodities silently come back empty and get dropped from the dataset.
+    """
+    for i in range(attempts):
+        try:
+            data = yf.download(ticker, period=period, interval=interval, progress=False)
+            if not data.empty:
+                return data
+            logger.warning(f"{ticker}: empty response (attempt {i + 1}/{attempts})")
+        except Exception as e:
+            logger.warning(f"{ticker}: download failed (attempt {i + 1}/{attempts}): {e}")
+        time.sleep(2 * (i + 1))  # linear backoff: 2s, 4s, 6s
+    return None
+
+
 def fetch_commodity_prices():
     logger.info("Fetching commodity prices...")
 
@@ -31,11 +50,11 @@ def fetch_commodity_prices():
 
     for name, ticker in COMMODITIES.items():
         logger.info(f"Fetching {name} ({ticker})...")
-        
-        data = yf.download(ticker, period="5y", interval="1d", progress=False)
-        
-        if data.empty:
-            logger.warning(f"No data for {name}")
+
+        data = _download_with_retry(ticker)
+
+        if data is None or data.empty:
+            logger.warning(f"No data for {name} after retries — skipping")
             continue
 
         data = data[["Close"]].copy()
@@ -45,6 +64,14 @@ def fetch_commodity_prices():
         data["date"] = data.index
 
         all_data.append(data)
+        time.sleep(1)  # gentle pacing between tickers to avoid rate limiting
+
+    if not all_data:
+        logger.error("No commodity data fetched for any ticker — aborting save")
+        return pd.DataFrame(columns=["date", "commodity", "ticker", "price"])
+
+    fetched = sorted({d["commodity"].iloc[0] for d in all_data})
+    logger.info(f"Fetched {len(fetched)}/{len(COMMODITIES)} commodities: {', '.join(fetched)}")
 
     # Combine all commodities into one dataframe
     df = pd.concat(all_data)
@@ -83,7 +110,10 @@ def fetch_commodity_prices():
 
     print("\nLatest Prices:")
     for name in COMMODITIES:
-        latest = df[df["commodity"] == name].iloc[-1]
+        sub = df[df["commodity"] == name]
+        if sub.empty:
+            continue
+        latest = sub.iloc[-1]
         print(f"  {name}: ${latest['price']:.2f}")
 
     return df

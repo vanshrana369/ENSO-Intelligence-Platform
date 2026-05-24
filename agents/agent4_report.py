@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import logging
 from datetime import datetime
@@ -6,6 +7,11 @@ from typing import Dict, List
 from pydantic import BaseModel, field_validator, ValidationError
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
+
+# Project root on path so we can import the ML forecaster for narrative alignment.
+_PROJECT_ROOT = os.path.join(os.path.dirname(__file__), '..')
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 load_dotenv()
 
@@ -57,7 +63,7 @@ class ReportSchema(BaseModel):
 
 
 llm = ChatGroq(
-    model="llama-3.1-8b-instant",
+    model="llama-3.3-70b-versatile",
     api_key=os.getenv("GROQ_API_KEY")
 )
 
@@ -66,10 +72,33 @@ def run_agent4(state):
 
     enso_phase = state.get("enso_phase", "")
     latest_mei = state.get("latest_mei", "")
+    latest_date = state.get("latest_date", "")
     enso_summary = state.get("enso_summary", "")
     news_insights = state.get("news_insights", "")
     market_risks = state.get("market_risks", "")
     raw_news_items = state.get("raw_news_items", [])
+
+    # ── ML 6-month forecast (same model the dashboard chart uses) ──────────────
+    # Anchors the narrative so the report can't contradict the forecast the user sees.
+    forecast_phase = None
+    try:
+        from ml.forecaster import run_forecast
+        seed = latest_mei if isinstance(latest_mei, (int, float)) else None
+        fc = run_forecast(seed_mei=seed, seed_date=latest_date or None)
+        forecast_phase = fc.get("predicted_phase")
+    except Exception as e:
+        logger.warning(f"Forecast for narrative alignment unavailable: {e}")
+
+    if forecast_phase and forecast_phase != "Unknown":
+        forecast_input = f"\n    - ML 6-month forecast (gradient-boosting model, same as dashboard chart): {forecast_phase}"
+        forecast_rule = (
+            f"\n    - DIRECTION CONSISTENCY: Your executive_summary and enso_status.outlook MUST agree "
+            f"with the ML 6-month forecast above ({forecast_phase}). Do NOT predict the opposite direction "
+            f"(e.g. if the forecast trends toward El Niño, never say it is trending toward La Niña)."
+        )
+    else:
+        forecast_input = ""
+        forecast_rule = ""
 
     # ── Get TODAY's date in the format the LLM should use ──────────────────────
     today = datetime.now().strftime("%Y-%m-%d")
@@ -83,16 +112,16 @@ def run_agent4(state):
     - Current ENSO indicator (Niño3.4 SST anomaly, in °C): {latest_mei}
     - ENSO Analysis: {enso_summary}
     - News Insights: {news_insights[:800]}
-    - Market Risks: {market_risks[:800]}
+    - Market Risks: {market_risks[:800]}{forecast_input}
 
     TODAY'S DATE IS: {today}
 
     Return exactly this JSON structure (IMPORTANT: use {today} for report_date):
     {{
         "report_date": "{today}",
-        "executive_summary": "3-4 sentence overview covering: current ENSO phase and current index value with correct units (the Niño3.4 SST anomaly reading is in °C; never attach °C to an MEI value), key market implications, and near-term outlook. Be specific about mechanisms and magnitudes.",
+        "executive_summary": "3-4 sentence overview covering: current ENSO phase and current index value with correct units (the Niño3.4 SST anomaly reading is in °C; never attach °C to an MEI value), key market implications, and near-term outlook. Be specific about mechanisms and magnitudes. State the ACTUAL phase name (e.g. 'Neutral') — never write out the list of options.",
         "enso_status": {{
-            "phase": "El Nino/La Nina/Neutral",
+            "phase": "the actual current phase: El Nino, La Nina, or Neutral (pick one)",
             "mei_value": {latest_mei},
             "trend": "strengthening/weakening/stable",
             "outlook": "2 sentence outlook covering transition likelihood (qualitative, no invented percentages) and timeline"
@@ -124,7 +153,7 @@ def run_agent4(state):
     - Do NOT state specific numeric transition-probability percentages (e.g. '50-60% probability of El Niño'). Phase-transition probabilities are computed and displayed elsewhere in the platform. Describe transition likelihood QUALITATIVELY (e.g., 'conditions increasingly favor a transition toward El Niño') and focus on mechanism and timeline.
     - INTERNAL CONSISTENCY: For each commodity, the expected price DIRECTION (up vs down) must be IDENTICAL across executive_summary, market_risks, and key_recommendations. Never describe the same commodity as both rising and falling.
     - TRADE LOGIC must be correct: to profit from an expected price INCREASE, recommend BUY / go long / hold long. To profit from an expected price DECREASE, recommend SELL / short / hedge short. Never pair a 'sell' action with a stated expectation of rising prices, or a 'buy' action with falling prices.
-    - Each recommendation must state an action + commodity + timeframe AND a rationale whose price direction matches that commodity's market_risks outlook (and the trade logic rule above).
+    - Each recommendation must state an action + commodity + timeframe AND a rationale whose price direction matches that commodity's market_risks outlook (and the trade logic rule above).{forecast_rule}
     """
 
     response = llm.invoke(prompt)
