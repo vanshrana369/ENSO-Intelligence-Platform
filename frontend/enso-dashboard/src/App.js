@@ -507,8 +507,11 @@ function App() {
       ? { background: 'linear-gradient(135deg, #7f1d1d 0%, #dc2626 50%, #ef4444 100%)' }
       : { background: 'linear-gradient(135deg, #374151 0%, #4b5563 50%, #6b7280 100%)' };
 
-  // True when the weekly Niño3.4 is newer than the latest MEI — used to label data source
-  const usingNino34 = !!(status?.nino34_date && status?.report_date && status.nino34_date > status.report_date);
+  // Driven by the backend's authoritative field — true when the displayed value
+  // is a live Niño3.4 SST anomaly (°C) rather than the dimensionless MEI.
+  const usingNino34 = status?.index_source === 'nino34';
+  const indexLabel = usingNino34 ? 'Niño3.4 SST' : 'MEI Index';
+  const indexUnit = usingNino34 ? '°C' : '';
 
   // Normalize: LLM sometimes returns 0-100 scale instead of 0-10
   const rawRisk = status?.risk_score ?? 0;
@@ -594,8 +597,8 @@ function App() {
         </div>
         <div className="ms-divider"/>
         <div className="ms-item">
-          <span className="ms-label">MEI Index</span>
-          <span className="ms-value">{status?.mei_value != null ? (animatedMei >= 0 ? '+' : '') + animatedMei.toFixed(2) : '—'}</span>
+          <span className="ms-label">{indexLabel}</span>
+          <span className="ms-value">{status?.mei_value != null ? (animatedMei >= 0 ? '+' : '') + animatedMei.toFixed(2) + (indexUnit ? ' °C' : '') : '—'}</span>
         </div>
         <div className="ms-divider"/>
         <div className="ms-item">
@@ -613,7 +616,7 @@ function App() {
         <div className="ms-item">
           <span className="ms-label">6M Forecast</span>
           <span className="ms-value" style={{ color: forecastColor }}>
-            {forecast?.predicted_phase ? `${forecast.predicted_phase.toUpperCase()} ${forecast.confidence_pct}%` : '—'}
+            {forecast?.predicted_phase ? `${forecast.predicted_phase.toUpperCase()} · ${forecast.confidence_pct}% CONF` : '—'}
           </span>
         </div>
         <div className="ms-divider"/>
@@ -626,9 +629,9 @@ function App() {
       {/* ── Stats row (5 cards) ── */}
       <div className="stats-row">
         <div className="stat-card">
-          <span className="stat-label">MEI Index</span>
+          <span className="stat-label">{indexLabel}</span>
           <span className="stat-value glow-cyan">
-            {status?.mei_value != null ? (animatedMei >= 0 ? '+' : '') + animatedMei.toFixed(2) : '-'}
+            {status?.mei_value != null ? (animatedMei >= 0 ? '+' : '') + animatedMei.toFixed(2) + (indexUnit ? ' °C' : '') : '-'}
           </span>
           <span className="stat-sub">{usingNino34 ? 'Niño3.4 Weekly — NOAA CPC' : 'Multivariate ENSO Index'}</span>
           <MiniSparkline data={chartData.slice(-8)} color="#0077b6" />
@@ -693,7 +696,7 @@ function App() {
       <div className="grid-60-40">
         <div className="card" style={{ marginBottom: 0 }}>
           <div className="card-header">
-            <h3>MEI Index Trend &amp; Forecast</h3>
+            <h3>ENSO Index Trend &amp; Forecast</h3>
             <span className="card-badge">{forecast ? '12MO HIST + 9MO FCST' : 'LAST 12 MONTHS'}</span>
           </div>
           <ResponsiveContainer width="100%" height={280}>
@@ -724,7 +727,7 @@ function App() {
                 cursor={{ stroke: 'rgba(0,119,182,0.15)', strokeWidth: 1 }}
                 formatter={(value, name) => {
                   if (name === 'ci_lower' || name === 'ci_band') return [null, null];
-                  if (typeof value === 'number') return [value.toFixed(2), 'MEI'];
+                  if (typeof value === 'number') return [value.toFixed(2), 'Index'];
                   return [value, name];
                 }}
               />
@@ -862,6 +865,7 @@ function App() {
           <div className="grid-2">
             <div className="card">
               <div className="card-header"><h3>Phase Probability Distribution</h3></div>
+              <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '0 0 0.5rem' }}>6-month phase probability from historical MEI analogs</p>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={[
                   { name: 'El Niño', value: analytics.phase_probabilities.el_nino },

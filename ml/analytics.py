@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.ensemble import GradientBoostingRegressor
 import glob
 
@@ -214,19 +213,33 @@ def commodity_sensitivity(mei_data, commodity_path=None):
 
     try:
         prices_df = pd.read_csv(max(commodity_files))
+        prices_df['date'] = pd.to_datetime(prices_df['date'])
+
+        # Monthly MEI series keyed by year-month period (MEI is already monthly).
+        mei_monthly = mei_data.copy()
+        mei_monthly['ym'] = pd.to_datetime(mei_monthly['date']).dt.to_period('M')
+        mei_monthly = mei_monthly.groupby('ym')['mei_value'].mean()
+
         all_commodities = prices_df['commodity'].str.lower().unique().tolist()
         correlations = {}
         for commodity in all_commodities:
-            prices = prices_df[prices_df['commodity'].str.lower() == commodity]['price'].values
-            if len(prices) > 10:
-                min_len = min(len(prices), len(mei_data))
-                corr = np.corrcoef(
-                    mei_data['mei_value'].tail(min_len).values,
-                    prices[-min_len:]
-                )[0, 1]
-                correlations[commodity] = round(float(corr), 2) if not np.isnan(corr) else 0
-            else:
+            sub = prices_df[prices_df['commodity'].str.lower() == commodity].copy()
+            # Resample daily prices to monthly mean, keyed by year-month period.
+            sub['ym'] = sub['date'].dt.to_period('M')
+            price_monthly = sub.groupby('ym')['price'].mean()
+
+            # Inner-join on the year-month key → only overlapping aligned points.
+            aligned = pd.concat(
+                [price_monthly.rename('price'), mei_monthly.rename('mei')],
+                axis=1, join='inner'
+            ).dropna()
+
+            if len(aligned) < 3:
                 correlations[commodity] = 0
+                continue
+
+            corr = np.corrcoef(aligned['mei'].values, aligned['price'].values)[0, 1]
+            correlations[commodity] = round(float(corr), 2) if not np.isnan(corr) else 0
         return correlations if correlations else {'wheat': 0, 'crude_oil': 0, 'soybean': 0}
     except Exception:
         return {'wheat': 0, 'crude_oil': 0, 'soybean': 0}
@@ -234,55 +247,62 @@ def commodity_sensitivity(mei_data, commodity_path=None):
 
 def find_similar_events(mei_data, n_similar=3):
     """
-    Find past 12-month MEI windows most similar to current pattern using cosine similarity.
+    Find past 12-month MEI windows most similar to the current pattern.
+
+    Level-aware: compares the RAW (non-normalized) current window against each
+    historical window using RMSE, so the actual ENSO level matters (a La Niña-era
+    window of all-negative values will NOT match a neutral/warming present).
     """
     if len(mei_data) < 24:
         return []
 
-    # Current 12-month window
-    current_window = mei_data['mei_value'].tail(12).values.reshape(1, -1)
+    # Current 12-month window (raw — level information preserved).
+    current_window = mei_data['mei_value'].tail(12).values
 
-    # Normalize for comparison
-    current_window = (current_window - np.mean(current_window)) / (np.std(current_window) + 1e-6)
+    candidates = []
 
-    similar_events = []
-
-    # Check all historical 12-month windows
+    # Check all historical 12-month windows.
     for start in range(len(mei_data) - 24):
-        window = mei_data['mei_value'].iloc[start:start+12].values.reshape(1, -1)
-        window = (window - np.mean(window)) / (np.std(window) + 1e-6)
+        window = mei_data['mei_value'].iloc[start:start+12].values
 
-        # Cosine similarity
-        similarity = cosine_similarity(current_window, window)[0, 0]
+        # RMSE between raw windows → respects actual level, not just shape.
+        rmse = float(np.sqrt(np.mean((current_window - window) ** 2)))
+        # Monotonic bounded transform: rmse=0 → 100%, larger rmse → lower %.
+        similarity_pct = int(round(100 * np.exp(-rmse)))
 
-        if similarity > 0.7:  # Only keep highly similar
-            start_date = mei_data['date'].iloc[start]
-            end_date = mei_data['date'].iloc[start+11]
+        start_date = mei_data['date'].iloc[start]
+        end_date = mei_data['date'].iloc[start+11]
 
-            # Simple outcome: what happened in next 12 months?
-            if start + 24 < len(mei_data):
-                next_period = mei_data['mei_value'].iloc[start+12:start+24].values
-                avg_next = np.mean(next_period)
+        # Simple outcome: what happened in the next 12 months?
+        if start + 24 < len(mei_data):
+            next_period = mei_data['mei_value'].iloc[start+12:start+24].values
+            avg_next = np.mean(next_period)
 
-                if avg_next > 0.5:
-                    outcome = "El Niño emerged"
-                elif avg_next < -0.5:
-                    outcome = "La Niña persisted"
-                else:
-                    outcome = "Transitioned to Neutral"
+            if avg_next > 0.5:
+                outcome = "El Niño emerged"
+            elif avg_next < -0.5:
+                outcome = "La Niña persisted"
             else:
-                outcome = "Recent event"
+                outcome = "Transitioned to Neutral"
+        else:
+            outcome = "Recent event"
 
-            similar_events.append({
-                'period': f"{pd.to_datetime(start_date).strftime('%Y-%m')} to {pd.to_datetime(end_date).strftime('%Y-%m')}",
-                'similarity_pct': int(similarity * 100),
-                'outcome': outcome
-            })
+        candidates.append({
+            'rmse': rmse,
+            'period': f"{pd.to_datetime(start_date).strftime('%Y-%m')} to {pd.to_datetime(end_date).strftime('%Y-%m')}",
+            'similarity_pct': similarity_pct,
+            'outcome': outcome
+        })
 
-    # Sort by similarity, return top N
-    similar_events = sorted(similar_events, key=lambda x: x['similarity_pct'], reverse=True)[:n_similar]
+    # Rank by smallest distance (most similar first).
+    candidates = sorted(candidates, key=lambda x: x['rmse'])
 
-    return similar_events
+    # Prefer reasonably strong matches; fall back to closest if none qualify.
+    strong = [c for c in candidates if c['similarity_pct'] >= 60]
+    selected = (strong if strong else candidates)[:n_similar]
+
+    return [{'period': c['period'], 'similarity_pct': c['similarity_pct'], 'outcome': c['outcome']}
+            for c in selected]
 
 
 def run_analytics(mei_data_path=None, current_mei=None):

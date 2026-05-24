@@ -32,7 +32,7 @@ def fetch_commodity_prices():
     for name, ticker in COMMODITIES.items():
         logger.info(f"Fetching {name} ({ticker})...")
         
-        data = yf.download(ticker, period="3mo", interval="1d", progress=False)
+        data = yf.download(ticker, period="5y", interval="1d", progress=False)
         
         if data.empty:
             logger.warning(f"No data for {name}")

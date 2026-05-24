@@ -95,6 +95,8 @@ ENSO index data:
 Current phase: {phase}
 Current ENSO index value: {latest_mei:+.2f}
 
+The current reading is a Niño3.4 SST anomaly measured in °C; the MEI is a dimensionless standardized index, so NEVER write "MEI" followed by a °C unit (e.g. never "MEI of +0.8°C") — attach °C only to the SST anomaly, never to the MEI.
+
 Write a 3-sentence professional summary that:
 1. States the current phase and the most recent index value precisely.
 2. Describes the recent trend (what the historical data shows vs. where we are now).

@@ -80,7 +80,7 @@ def run_agent4(state):
 
     Use this data:
     - ENSO Phase: {enso_phase}
-    - MEI Value: {latest_mei}
+    - Current ENSO indicator (Niño3.4 SST anomaly, in °C): {latest_mei}
     - ENSO Analysis: {enso_summary}
     - News Insights: {news_insights[:800]}
     - Market Risks: {market_risks[:800]}
@@ -90,12 +90,12 @@ def run_agent4(state):
     Return exactly this JSON structure (IMPORTANT: use {today} for report_date):
     {{
         "report_date": "{today}",
-        "executive_summary": "3-4 sentence overview covering: current ENSO phase and MEI value, key market implications, and near-term outlook. Be specific about mechanisms and magnitudes.",
+        "executive_summary": "3-4 sentence overview covering: current ENSO phase and current index value with correct units (the Niño3.4 SST anomaly reading is in °C; never attach °C to an MEI value), key market implications, and near-term outlook. Be specific about mechanisms and magnitudes.",
         "enso_status": {{
             "phase": "El Nino/La Nina/Neutral",
             "mei_value": {latest_mei},
             "trend": "strengthening/weakening/stable",
-            "outlook": "2 sentence outlook covering transition probability and timeline"
+            "outlook": "2 sentence outlook covering transition likelihood (qualitative, no invented percentages) and timeline"
         }},
         "market_risks": {{
             "wheat":       {{"risk_level": "Low/Medium/High/Extreme", "outlook": "2-3 sentences on growing region exposure, affected countries, expected price direction with % magnitude"}},
@@ -120,6 +120,11 @@ def run_agent4(state):
     - All outlook text must be specific to {enso_phase} conditions, not generic.
     - Include real geographic regions, crop names, and percentage estimates where possible.
     - Recommendations must start with an action verb and include a commodity and timeframe.
+    - MEI is a dimensionless index — NEVER write a °C unit after an MEI value. The current SST anomaly value provided above IS measured in °C; the MEI is not. Do not conflate the two or invent a '°C MEI' value.
+    - Do NOT state specific numeric transition-probability percentages (e.g. '50-60% probability of El Niño'). Phase-transition probabilities are computed and displayed elsewhere in the platform. Describe transition likelihood QUALITATIVELY (e.g., 'conditions increasingly favor a transition toward El Niño') and focus on mechanism and timeline.
+    - INTERNAL CONSISTENCY: For each commodity, the expected price DIRECTION (up vs down) must be IDENTICAL across executive_summary, market_risks, and key_recommendations. Never describe the same commodity as both rising and falling.
+    - TRADE LOGIC must be correct: to profit from an expected price INCREASE, recommend BUY / go long / hold long. To profit from an expected price DECREASE, recommend SELL / short / hedge short. Never pair a 'sell' action with a stated expectation of rising prices, or a 'buy' action with falling prices.
+    - Each recommendation must state an action + commodity + timeframe AND a rationale whose price direction matches that commodity's market_risks outlook (and the trade logic rule above).
     """
 
     response = llm.invoke(prompt)

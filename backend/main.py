@@ -438,6 +438,7 @@ def get_status():
     # Always use the live Niño3.4 SST anomaly as the current phase indicator.
     # MEI is a lagged multivariate composite — during transitions it can show the
     # OPPOSITE phase from the actual SST.  Niño3.4 SST is the direct measurement.
+    index_source = "mei"
     nino34 = _get_live_nino34()
     nino34_anom = None
     nino34_date = None
@@ -447,12 +448,14 @@ def get_status():
         mei   = nino34_anom
         phase = nino34['phase']
         trend = "warming" if nino34_anom > 0 else "cooling"
+        index_source = "nino34"
         logger.info(f"Status: Niño3.4 live {nino34_date}  {nino34_anom:+.2f}  → {phase}")
 
     return {
         "status": "ok",
         "phase": phase,
         "mei_value": mei,
+        "index_source": index_source,
         "trend": trend,
         "outlook": outlook,
         "risk_score": report.get("risk_score", 0),
