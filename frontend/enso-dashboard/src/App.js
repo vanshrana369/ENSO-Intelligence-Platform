@@ -941,7 +941,7 @@ function App() {
             <div className="card">
               <div className="card-header">
                 <h3>Similar Historical Events</h3>
-                <span className="card-badge">Cosine similarity search</span>
+                <span className="card-badge">RMSE level-aware match</span>
               </div>
               <div className="similar-events-grid">
                 {analytics.similar_events.map((event, i) => (
