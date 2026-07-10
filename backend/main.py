@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 from urllib.parse import urlparse
 
 DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:9213546700@localhost:5432/enso_db")
-print("DB Host:", urlparse(DB_URL).hostname)
+print("DB URL:", DB_URL)
 _engine = create_engine(DB_URL, pool_pre_ping=True)
 
 
