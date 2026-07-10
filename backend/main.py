@@ -26,9 +26,13 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'agents'))
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+ 
+from urllib.parse import urlparse
 
 DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:9213546700@localhost:5432/enso_db")
+print("DB Host:", urlparse(DB_URL).hostname)
 _engine = create_engine(DB_URL, pool_pre_ping=True)
+
 
 # Rate-limit NOAA requests — don't hammer on every API call
 _last_mei_refresh: datetime | None = None
